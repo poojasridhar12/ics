@@ -1,30 +1,115 @@
 <<header
 assignment: Assignment 1
-student: [NAME]
-date: [DATE]
+student: Pooja Sridhar
+date: 25 October 2025
 collaborators: None
-problem: Problem 1: Division is Repeated Addition
+problem: Problem 1: Division is Repeated Subtraction
 header>>
 
-<<problem 1: Problem 1: Division is Repeated Addition
+<<problem 1: Problem 1: Division is Repeated Subtraction
+
 <<blueprint
-requires:
-
-
-ensures:
-
+  requires: 
+    (i) a : nat, b : nat
+    (ii) a >= 0,  b > 0
+  
+  ensures: Returns a pair (q, r) such that:
+    (i)  a = (b * q) + r
+    (ii) r < b
 blueprint>>
 
-<<operational steps
 
+
+<<operational steps
+1. First, check if the denominator b = 0. If so, the division is undefined and we return None
+
+2. If b is non-zero:
+   - We start off with the assumption that q = 0 and r = a
+
+3. Check if a < b :
+   - If true: return q = 0 and r
+   - If false: subtract b from a
+
+4. For the case where a >= b:
+   - Use recursion to build q by counting the number of times you have to subtract b from a
+   - Once r < b, return q and r
 operational steps>>
 
-<<ocaml code
 
+
+
+<<ocaml code
+type nat = Zero | Succ of nat
+
+let rec less_than (a : nat) (b : nat) : bool =
+  match (a, b) with
+  | (_, Zero) -> false
+  | (Zero, Succ _) -> true
+  | (Succ a', Succ b') -> less_than a' b'                    (* less than a = a' *)
+
+let rec minus (a : nat) (b : nat) : nat =
+  match (a, b) with
+  | (Zero, Zero) -> Some Zero
+  | (Zero, Succ _) -> None
+  | (_, Zero) -> Some a
+  | (Succ a', Succ b') -> minus a' b'
+
+let rec divmod (a : nat) (b : nat) : (nat * nat) =
+  match b with
+  | Zero -> None                                             (* division by zero undefined *)
+  | _ ->
+    if less_than a b then Some (Zero, a)                     (* q = 0, r = a *)
+    else
+      match minus a b with
+      | None -> None
+      | Some diff ->
+        match divmod diff b with
+        | None -> None
+        | Some (q, r) -> Some (Succ q, r)
 ocaml code>>
 
+
+
+
 <<proof
+Goal: Given two natural numbers `a` and `b` such that `b` is not zero, the division function returns quotient `q` and remainder `r`
+    1. a = b * q + r
+    2. r < b
+
+Base case (a < b)
+  If a < b, then b cannot be subtracted, so the q = 0 and the r = a. This is proven below 
+    1. a = b * 0 + a = a
+    2. r = a < b
+
+Inductive Step (a >= b)
+  Assume that for all natural numbers k smaller than some a, division returns quotient qk and remainder rk fulfilling:
+    1. k = b * qk + rk
+    2. rk < b
+
+  The function subtracts b from a, getting diff = a−b, with diff < a.
+    By the induction hypothesis, division on diff returns quotient q and remainder r such that:
+      1. diff = b * q + r
+      2. r < b
+    Expressing a in terms of diff:
+      - a = b + diff = b + (b*q+r) = b * (q+1) + r
+    So the new quotient is q+1 and remainder is r.
+    Both conditions hold for aa.
+
+Evidence of Termination
+Because the recursive call subtracts b from a, 
+producing a smaller number diff = a - b, diff will be less than a as the size of the input decreases in each call. 
+As there are a finite number of recursive calls, the base case of a < b can be reached. 
+The recursion stops when reaching the base case, so the function terminates. 
 
 proof>>
 
 problem>>
+
+
+
+
+
+
+
+
+
