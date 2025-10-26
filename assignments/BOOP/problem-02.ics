@@ -35,7 +35,6 @@ blueprint>>
     - reverse_helper [3] [2; 1] (prepend 2 to )​
     - reverse_helper [] [3; 2; 1] (prepend 3 to [2; 1])
     - Return [3; 2; 1] (base case reached)
-
 operational steps>>
 
 
@@ -53,19 +52,23 @@ ocaml code>>
 
 
 <<proof
-Base Case 1 - An empty list reversed is still empty, hence proved
-Base Case 2 - A single element list reversed is still the same list, hence proved
+INDUCTION
+  Base Case 1 - An empty list reversed is still empty, hence proved
+  Base Case 2 - A single element list reversed is still the same list, hence proved
+  
+  Inductive hypothesis 
+    - Assume for any list length k, the function reverses the list 
+  
+  Inductive Step
+    - For a list length k + 1, it would be of the structure of head :: tail, wiith the tail being k, so that it would be head + tail, or k + 1
+    - When doing reverse tail, the tail is reversed
+    - The head then can be appended to the reversed tail, such that reverse tail :: head
+    - Therefore, the first element of the original list is now at the end, thus reversing the whole list
 
-Inductive hypothesis 
-  - Assume for any list length k, the function reverses the list 
-
-Inductive Step
-  - For a list length k + 1, it would be of the structure of head :: tail, wiith the tail being k, so that it would be head + tail, or k + 1
-  - When doing reverse tail, the tail is reversed
-  - The head then can be appended to the reversed tail, such that reverse tail :: head
-  - Therefore, the first element of the original list is now at the end, thus reversing the whole list
-  - This function would terminate when the recursive call to process the tail of the list causes the tail of the original list to shrink until the base case (which is empty list), causing the function to terminate
-  - Therefore the reverse function can be applied to all lists and can terminate, hence proved.
+TERMINATION
+  - The function calls itself recursively with the tail of the list, which is smaller than the original list.
+  - Eventually the recursion reaches the base case of an empty list and stops the recurison
+  - This terminates the reverse function for all finite lists 
 proof>>
 
 
