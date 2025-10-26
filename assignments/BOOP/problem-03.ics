@@ -10,16 +10,16 @@ header>>
 
 <<blueprint
 requires:
-- numerator: int, m (denominator): int 
+- numerator n : int, m (denominator): int 
 - 0 < n < m
-- gcd(num, denom) = 1 (unit fraction)
-- n/m is the original fraction
+- original fraction n/m > 0
 
-ensures: (return (1/d1) + (1/d2)]
-- n/m = 1/d1 + 1/d2 + ... + 1/dk
-- n = 1
-- d1 < d2 < ... < dk
-- k : int (cannot go on forever)
+ensures:
+- returns a finite list [d1; d2; ...; dk] of positive integers such that
+    n/m = 1/d1 + 1/d2 + ... + 1/dk
+- forall n in [1..k], n = 1
+- m = d1 < d2 < ... < dk
+- algorithm terminates in finite steps -> k : int
 - 1/d1 < n/m
 blueprint>>
 
@@ -39,7 +39,7 @@ My understanding of the Greedy algorithm:
 - the fraction is a unit fraction 1/demon, and add it to the accumulator
 - return the accumulator (with all fractions so far)
 
-3. Recursive Case n>1
+3. Recursive Case n > 1
 - Calcuate the largest unit fraction 1/d that is =< n/m 
   - to see what is the largest fraction, divide the original fraction and check the ceiling for division
   - ceiling is n/m rounded up to the nearest integer = d 
@@ -104,31 +104,30 @@ ocaml code>>
 
 
 <<proof
+INDUCTION
 Base case is that n = 1
-- if the numerator is 1, then 1/m is a unit fraction, and you return 1/m, terminating the algorithm
+- if the numerator is 1, then 1/m is a unit fraction, and the algorithm returns 1/m, terminating immediately 
 
 Inductive Hypothesis 
 - Assume that for all numerators n', with 1 =< n' =< num, the alogrithm holds true, and decomposes n'/m' into a finite sum of distinct unit fractions
 
 Inductive Step: Prove that it is true for (n + 1)/m
-  Select d = ceiling (m / (n + 1)), largest unit fraction 1/d such that 1/d <= (n + 1)/m
+  - Select d = ceiling (m / (n + 1)), largest unit fraction 1/d such that 1/d <= (n + 1)/m
 
-  calculate the remainder:
+  - calculate the remainder:
     remainder = (n + 1)/m - 1/d = ((n + 1)*d - m) / (m * d)
 
-  Simplify to get remainder fraction n'/m' with n' < n + 1
-
-  By inductive hypothesis, the algorithm correctly decomposes n'/m'
-
-  Prepend 1/d to this decomposition to form the decomposition of (n + 1)/m
-
-  Since 1/d is less than all fractions in the recursive decomposition, denominators are strictly increasing
-
-  Numerator strictly decreases at each step, so the recursion terminates.
+  - Simplify to get remainder fraction n'/m' with n' < n + 1
+  - By inductive hypothesis, the algorithm correctly decomposes n'/m'
+  - Prepend 1/d to this decomposition to form the decomposition of (n + 1)/m
+  - Since 1/d is less than all fractions in the recursive decomposition, denominators are strictly increasing
+  - Numerator of the reminder fraction strictly decreases at each step, so the recursion terminates.
 
 Therefore, the algorithm correctly and finitely decomposes any proper fraction into a sum of distinct unit fractions.
 proof>>
 
-
+TERMINATION
+- d < m. This proves the strictly increasing property of denominators 
+- n decreases in each call, and as all numerators are bound to terminate at 1, the recursion terminates after a finite amount of calls. 
 
 problem>>
