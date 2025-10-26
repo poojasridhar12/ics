@@ -1,30 +1,130 @@
 <<header
 assignment: Assignment 1
-student: [NAME]
-date: [DATE]
+student: Pooja Sridhar
+date: 26 October 2025
 collaborators: None
 problem: Problem 3: Egyptian Fractions
 header>>
 
 <<problem 1: Problem 3: Egyptian Fractions
+
 <<blueprint
 requires:
+- numerator: int, m (denominator): int 
+- 0 < n
+- 0 < m
+- n/m is the original fraction
 
-
-ensures:
-
+ensures: (return (1/d1) + (1/d2)]
+- n/m = 1/d1 + 1/d2 + ... + 1/dk
+- n = 1
+- d1 < d2 < ... < dk
+- k : int (cannot go on forever)
+- 1/d1 < n/m
 blueprint>>
 
-<<operational steps
 
+
+<<operational steps
+My understanding of Egyptian fractions: representing any positive fraction as a sum of unit fractions (that don't repeat within the sum)
+My understanding of the Greedy algorithm: 
+- Convert a proper fraction into an Egyptian fraction by taking the largest unit fraction that is smaller than the current fraction and subtract it, until what is left is the unit fraction
+- This algorithm states that every positive rational number has 1 Egyptian Fraction (https://www.wolframcloud.com/objects/nbarch/2018/10/2018-10-10pt4o2/Egyptian.nb)
+- This algorithm states that there is no repetition of the unit fraction within the sum
+
+1. Check if n > 0 and m > 0, and n < m. If this is failed, raise error
+
+2. Base case: 
+- n = 1
+- the fraction is a unit fraction 1/demon, and add it to the accumulator
+- return the accumulator (with all fractions so far)
+
+3. Recursive Case n>1
+- Calcuate the largest unit fraction 1/d that is =< n/m 
+(to see what is the largest fraction, divide the original fraction and check the ceiling for division, and the greatest common divisors so that you can use them to divide the original fraction)
+- remainder of n/m - 1/d
+- let new_n = num * d - denom
+- let new_m = denom * d
+- Simplify the remainder fraction using gcd to reduce to lowest terms
+
+4. Accumulator 
+- add (1, d) to accumulator
+- Recursively apply the algorithm to the simplified remainder fraction, add each unique unit function to accumulator
+- Return the accumulated list of all unit fractions
+
+5. Termination
+- If new_n (after the simplification) = 0, the fraction has decomposed
+- Add (1, d) to the accumulator and return the accumulator 
 operational steps>>
 
+
+
 <<ocaml code
+let gcd (a : int) (b : int) : int =
+  let rec gcd_helper (x : int) (y : int) : int =
+    match y with
+    | 0 -> x
+    | _ -> gcd_helper y (x mod y)
+  in
+  gcd_helper (abs a) (abs b)
+
+let simplify (n : int) (m : int) : (int * int) =
+  let g = gcd n m in
+  (n / g, m / g)
+
+let ceil_div (a : int) (b : int) : int =
+  (a + b - 1) / b
+
+(* decomposition by greedy algorithm *)
+let egyptian_fractions (n : int) (m : int) : (int * int) list =
+  if n <= 0 || m <= 0 then failwith "Numerator and denominator must be positive"
+  else if n >= m then failwith "Must be a proper fraction (numerator < denominator)"
+  else 
+    let rec greedy_helper (num : int) (den : int) (acc : (int * int) list) : (int * int) list =
+      match num with
+      | 1 -> List.rev ((1, den) :: acc)
+      | _ ->
+        let d = ceil_div den num in
+        let new_num = num * d - den in
+        let new_den = den * d in
+        let (simpler_num, simpler_den) = simplify new_num new_den in
+        greedy_helper simpler_num simpler_den ((1, d) :: acc)
+    in
+    greedy_helper n m []
+
+(* converting the list to a string with the function of sum between each fraction *)
+let fraction_list_to_string (fractions : (int * int) list) : string =   fractions
+  |> List.map (fun (num, den) -> Printf.sprintf "1/%d" den)
+  |> String.concat " + "
 
 ocaml code>>
 
+
+
 <<proof
+Base case is that n = 1
+- if the numerator is 1, then 1/m is a unit fraction, and you return 1/m
+
+Inductive Hypothesis 
+- Assume that for all numerators k, with 1 =< k =< n, the alogrithm holds true, and decomposes k/m into a finite sum of distinct unit fractions
+
+Inductive Step
+- Prove that it is true for (n + 1)/m
+    1/d =< (n + 1)/m
+    d = m/(n + 1)
+
+- Subtract 
+    [ (n + 1)/m ] - 1/d = [ ((n+1)d - m)/md ]
+    Using gcd, we get simplified fraction n'/m'
+    n' < n+1, showing that the numerator has decreased, and the fraction has decomposed
+
+- The alogirthm decomposes n'/m' recursively into a finite set of distinct fractions, in a decreasing, distinct set of fractions
+- This continues until n = 1, and then terminates, as the base case is reached
+
+Hence proved
 
 proof>>
+
+
 
 problem>>
