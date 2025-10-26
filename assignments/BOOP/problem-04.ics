@@ -1,30 +1,155 @@
 <<header
 assignment: Assignment 1
-student: [NAME]
-date: [DATE]
+student: Pooja Sridhar
+date: 26 September 2025
 collaborators: None
 problem: Problem 4: Stalin Sort
 header>>
 
 <<problem 1: Problem 4: Stalin Sort
+
+
 <<blueprint
-requires:
+requires: 'a : list in which elements are comparable using a total order
 
+ensures: returns a list resulting from 'a list of:
+  - does not return the longest sorted subsequence (only the first maximal non-decreasing subsequence)
+  - the returned list is a subsequence of the original list, and the elements appear in the same relative order
+  - the returned list is non-decreasing (if x, y - then x <= y)
 
-ensures:
-
+(* subsequence = same order with all misordered elements removed *)
 blueprint>>
 
+
+
+
 <<operational steps
+1. Base Cases
+  - If original list is empty, return empty list
+
+2. Have an empty accumulator (this is the result list)
+
+3. Iterate each element of original list from left to right 
+
+4. For each element, recursively, 
+  - if the accumulator is empty, append the element
+  - Else, compare element with last element in accumulator 
+    - If element >= last element in accumulator, append it to accumulator
+    - Else, discard it (remove out-of-order element)
+
+5. Recurse until all elements are processed
+
+6. Return accumulated list as the longest sorted subsequence of original list
+
+Note: This approach also handles already sorted list by making it go through the algorithm to check for order. If pre-ordered, then the whole list is returned
 
 operational steps>>
 
-<<ocaml code
 
+
+
+<<ocaml code
+let stalin_sort (lst : 'a list) : 'a list =
+  match lst with
+  | [] -> []
+  | head :: tail ->
+    let rec aux acc rest =
+      match rest with
+      | [] -> List.rev acc
+      | h :: t ->
+          if h >= List.hd acc then
+            aux (h :: acc) t
+          else
+            aux acc t
+    in
+    aux [head] tail
 ocaml code>>
 
+
+
+
 <<proof
+INDUCTION
+
+Base Case
+  - Length n = 0 (lst = []):
+    - Input satisfies requires: [] is a valid list
+    - Algorithm returns: []
+    - Output satisfies ensures [] is: 
+      - (i) a subsequence of []
+      - (ii) trivially non-decreasing
+      - (iii) maximal (cannot add more elements)
+  
+  - Length n = 1 (lst = [x]):
+    - Input satisfies requires: [x] is a valid list
+    - Algorithm returns: [x]
+    - Output satisfies ensures [x] is : 
+      - (i) a subsequence of [x]
+      - (ii) trivially non-decreasing
+      - (iii) maximal (cannot add more elements)
+
+Inductive Hypothesis: 
+For all lists of length k where 0 ≤ k < n, if the input satisfies the 
+requires clause, then stalin_sort produces a list that satisfies the ensures 
+clause.
+
+Inductive Step (length n+1):
+a list lst = hd :: tl of length n+1 where n ≥ 1.
+
+The tail tl has length n, so by the inductive hypothesis, stalin_sort tl 
+produces a list rest that:
+- is a subsequence of tl (preserves order)
+- is non-decreasing
+- is maximal for tl
+
+algorithm compares hd with the first element of rest:
+
+If rest = [] or hd ≤ first(rest), 
+  Algorithm returns: hd :: rest (keep the head element)
+  This output satisfies ensures because it is:
+  
+  (i) Subsequent:
+    - hd :: rest includes hd from position 0 of hd :: tl
+    - rest is a subsequence of tl (by IH)
+    - Therefore, hd :: rest is a subsequence of hd :: tl
+  
+  (ii) Non-decreasing:
+    - rest is non-decreasing (by IH)
+    - hd ≤ first(rest)
+    - Therefore, hd :: rest = hd :: first(rest)
+  
+  (iii) Maximality property:
+    - Adding hd to rest increases length by 1
+    - hd maintains non-decreasing order with rest
+    - Cannot add any other element from hd :: tl
+    - Therefore, hd :: rest is maximal
+
+If hd > first(rest)
+  Algorithm returns: rest (discards head element)
+  This output satisfies ensures because it is:
+  
+  (i) Subsequence property:
+    - rest is a subsequence of tl (by IH)
+    - tl is a subsequence of hd :: tl (by skipping hd)
+    - By transitivity, rest is a subsequence of hd :: tl
+  
+  (ii) Non-decreasing property:
+    - rest is non-decreasing (by IH)
+  
+  (iii) Maximality property:
+    - Cannot include hd because hd > first(rest)
+    - Including hd would violate non-decreasing property
+    - rest is maximal for the remaining elements after hd
+    - Therefore, rest is maximal
+
+
+TERMINATION
+The algorithm terminates because:
+- Each recursive call is made on the tail of the list, which is strictly 
+  smaller in structure, until the base case is reached and the recursion is stopped.
+- Therefore, the algorithm always terminates
 
 proof>>
+
 
 problem>>
