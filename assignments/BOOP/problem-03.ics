@@ -46,6 +46,9 @@ My understanding of the Greedy algorithm:
 - subtract 1/d from n/m
   - new_num/new_denom = n/m - 1/d = (num * d - denom)/denom * d
 - Simplify the remainder fraction using gcd to reduce to lowest terms (simpler_num, simpler_denom)
+- the option type is added to handle the edge cases by handling any errors 
+    (such as no value returned or a valid list isn't produced(or no list is      produced)) 
+    (in case an invalid list is given, etc. if a valid list is given, it         returns some list)
 
 Recursively apply the algorithm to the simplified remainder fraction, add each unique unit function to accumulator
 
@@ -63,14 +66,14 @@ operational steps>>
 
 <<ocaml code
 let gcd (a : int) (b : int) : int =
-  let rec gcd_helper (x : int) (y : int) : int =
+  let rec gcd_helper (x : int) (y : int) : int option =
     match y with
     | 0 -> x
     | _ -> gcd_helper y (x mod y)
   in
   gcd_helper (abs a) (abs b)
 
-let simplify (n : int) (m : int) : (int * int) =
+let simplify (n : int) (m : int) : (int * int) list option =
   let g = gcd n m in
   (n / g, m / g)
 
