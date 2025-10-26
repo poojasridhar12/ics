@@ -10,30 +10,29 @@ header>>
 
 <<blueprint
   requires: 
-    (i) a : nat, b : nat
-    (ii) a >= 0,  b > 0
+    (i) a : nat
+    (ii) b : nat, b > 0
   
   ensures: Returns a pair (q, r) such that:
-    (i)  a = (b * q) + r
-    (ii) r < b
+    (i)  q : nat, r : nat 
+    (ii) a = (b * q) + r
+    (iii) r < b
 blueprint>>
 
 
 
 <<operational steps
-1. First, check if the denominator b = 0. If so, the division is undefined and we return None
+1. If the denominator b = 0. Return error 
 
 2. If b is non-zero:
    - We start off with the assumption that q = 0 and r = a
 
-3. Check if a < b :
-   - If true: return q = 0 and r
-   - If false: subtract b from a
+3. If r < b, stop recursion and return (q, r) as the quotient and remainder.
 
-4. For the case where a >= b:
-   - Use recursion to build q by counting the number of times you have to subtract b from a
-   - Once r < b, return q and r
-operational steps>>
+4. If r >= b, subtract b from r, increment q by 1, and recurse with the new values of q and r.
+
+5. Continue recursively until r < b, and then return q and r
+=operational steps>>
 
 
 
@@ -72,34 +71,40 @@ ocaml code>>
 
 
 <<proof
-Goal: Given two natural numbers `a` and `b` such that `b` is not zero, the division function returns quotient `q` and remainder `r`
-    1. a = b * q + r
-    2. r < b
-
-Base case (a < b)
-  If a < b, then b cannot be subtracted, so the q = 0 and the r = a. This is proven below 
-    1. a = b * 0 + a = a
-    2. r = a < b
-
-Inductive Step (a >= b)
-  Assume that for all natural numbers k smaller than some a, division returns quotient qk and remainder rk fulfilling:
-    1. k = b * qk + rk
-    2. rk < b
-
-  The function subtracts b from a, getting diff = a−b, with diff < a.
-    By the induction hypothesis, division on diff returns quotient q and remainder r such that:
-      1. diff = b * q + r
+INDUCTION
+  Goal: Given two natural numbers `a` and `b` such that `b` is not zero, the division function returns quotient `q` and remainder `r`
+      1. a = b * q + r
       2. r < b
-    Expressing a in terms of diff:
-      - a = b + diff = b + (b*q+r) = b * (q+1) + r
-    So the new quotient is q+1 and remainder is r.
-    Both conditions hold for aa.
+  
+  Base case (a < b)
+    If a < b, then b cannot be subtracted, so the q = 0 and the r = a. This is proven below 
+      1. a = b * 0 + a = a
+      2. r = a < b
 
-Evidence of Termination
-Because the recursive call subtracts b from a, 
-producing a smaller number diff = a - b, diff will be less than a as the size of the input decreases in each call. 
-As there are a finite number of recursive calls, the base case of a < b can be reached. 
-The recursion stops when reaching the base case, so the function terminates. 
+  Induction Hypothesis 
+    For all k < a, the division function returns a quotient qk and remainder rk such that: 
+      (i) k = b × qk + rk 
+      (ii) rk < b
+
+  Inductive Step 
+    for input a >= b, the function returns q, r satisfying: 
+      (i) a = b × q + r
+      (ii) r < b
+
+    - Since a >= b, algorithm subtracts b once and calls recursively on a − b, which is smaller than a.
+    - By inductive hypothesis, the recursive call returns qk, rk such that: a - b = b * qk + rk (where rk < b)
+    - The alogirtm then returns q = qk + 1, r = rk. This results in 
+      a = b + (a - b)
+        = b + b * qk + rk
+        = b * (qk + 1) + rk
+        = b * q + r             (* thus, r = rk < b still holds *)
+    - Thus the properties are held for a
+
+
+TERMINATION
+- Because the recursive call subtracts b from a, producing a smaller number diff = a - b, diff will be less than a as the size of the input decreases in each call. 
+- As there are a finite number of recursive calls, the base case of a < b can be reached. 
+- The recursion stops when reaching the base case, so the function terminates. 
 
 proof>>
 
