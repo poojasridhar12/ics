@@ -68,14 +68,17 @@ operational steps>>
 let gcd (a : int) (b : int) : int =
   let rec gcd_helper (x : int) (y : int) : int option =
     match y with
-    | 0 -> x
+    | 0 -> some x
     | _ -> gcd_helper y (x mod y)
   in
   gcd_helper (abs a) (abs b)
 
-let simplify (n : int) (m : int) : (int * int) list option =
-  let g = gcd n m in
-  (n / g, m / g)
+let simplify (n : int) (m : int) : (int * int) option =
+let g_opt = gcd n m in
+  match g_opt with
+  | None -> None
+  | Some g ->
+    if g = 0 then None else Some (n / g, m / g)
 
 let ceil_div (a : int) (b : int) : int =
   (a + b - 1) / b
