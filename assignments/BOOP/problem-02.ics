@@ -1,30 +1,74 @@
 <<header
 assignment: Assignment 1
-student: [NAME]
-date: [DATE]
+student: Pooja Sridhar
+date: 25 Oct 2025
 collaborators: None
 problem: Problem 2: List Reversal 
 header>>
 
 <<problem 1: Problem 2: List Reversal 
-<<blueprint
-requires:
 
+<<blueprint
+requires: 
+lst is a list of any type 'a
 
 ensures:
-
+- if empty list, return empty list 
+- if containing some element, return a new list containing elements of lst in reverse order
+- length of returned list = length of lst
 blueprint>>
 
+
+
 <<operational steps
+- Base Case [Empty list] - If empty, return empty
+- Base Case [Single Element] - If 1 element, return the same list
+- Recursive Case 
+  - First element = head and the rest of the list = tail
+  - Append the head to the end of the reversed tail accumulatively 
+  - Return the results 
+
+- Using tail recursion in this case (because recursive call is the last operation)
+- Example used for me to understand:
+    - reverse_helper [1; 2; 3] []
+    - reverse_helper [2; 3] [1] (prepend 1 to [])
+    - reverse_helper [3] [2; 1] (prepend 2 to )​
+    - reverse_helper [] [3; 2; 1] (prepend 3 to [2; 1])
+    - Return [3; 2; 1] (base case reached)
 
 operational steps>>
 
-<<ocaml code
 
+
+<<ocaml code
+let reverse (lst : 'a list) : 'a list =
+  let rec reverse_helper (lst : 'a list) (acc : 'a list) : 'a list =
+    match lst with
+    | [] -> acc                           
+    | head :: tail -> reverse_helper tail (head :: acc)
+  in
+  reverse_helper lst []
 ocaml code>>
 
-<<proof
 
+
+<<proof
+Base Case 1 - An empty list reversed is still empty, hence proved
+Base Case 2 - A single element list reversed is still the same list, hence proved
+
+Inductive hypothesis 
+  - Assume for any list length k, the function reverses the list 
+
+Inductive Step
+  - For a list length k + 1, it would be of the structure of head :: tail, wiith the tail being k, so that it would be head + tail, or k + 1
+  - When doing reverse tail, the tail is reversed
+  - The head then can be appended to the reversed tail, such that reverse tail :: head
+  - Therefore, the first element of the original list is now at the end, thus reversing the whole list
+  - This function would terminate when the recursive call to process the tail of the list causes the tail of the original list to shrink until the base case (which is empty list), causing the function to terminate
+  - Therefore the reverse function can be applied to all lists and can terminate, hence proved.
 proof>>
+
+
+
 
 problem>>
