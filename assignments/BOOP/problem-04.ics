@@ -10,14 +10,15 @@ header>>
 
 
 <<blueprint
-requires: 'a : list in which elements are comparable using a total order
+        <<functional-correctness
+              requires: 'a : list in which elements are comparable using a total order
 
-ensures: returns a list resulting from 'a list of:
-  - does not return the longest sorted subsequence (only the first maximal non-decreasing subsequence)
-  - the returned list is a subsequence of the original list, and the elements appear in the same relative order
-  - the returned list is non-decreasing (if x, y - then x <= y)
-
-(* subsequence = same order with all misordered elements removed *)
+              ensures: returns a list resulting from 'a list of:
+                (i) does not return the longest sorted subsequence (only the first maximal non-decreasing subsequence)
+                (ii) the returned list is a subsequence of the original list, and the elements appear in the same relative order
+                (iii) the returned list is non-decreasing (if x, y - then x <= y)
+                (* subsequence = same order with all misordered elements removed *)
+        functional-correctness>>
 blueprint>>
 
 
@@ -69,85 +70,128 @@ ocaml code>>
 
 
 <<proof
-INDUCTION
 
-Base Case
-  - Length n = 0 (lst = []):
-    - Input satisfies requires: [] is a valid list
-    - Algorithm returns: []
-    - Output satisfies ensures [] is: 
-      - (i) a subsequence of []
-      - (ii) trivially non-decreasing
-      - (iii) maximal (cannot add more elements)
-  
-  - Length n = 1 (lst = [x]):
-    - Input satisfies requires: [x] is a valid list
-    - Algorithm returns: [x]
-    - Output satisfies ensures [x] is : 
-      - (i) a subsequence of [x]
-      - (ii) trivially non-decreasing
-      - (iii) maximal (cannot add more elements)
-
-Inductive Hypothesis: 
-For all lists of length k where 0 ≤ k < n, if the input satisfies the 
-requires clause, then stalin_sort produces a list that satisfies the ensures 
-clause.
-
-Inductive Step (length n+1):
-a list lst = hd :: tl of length n+1 where n ≥ 1.
-
-The tail tl has length n, so by the inductive hypothesis, stalin_sort tl 
-produces a list rest that:
-- is a subsequence of tl (preserves order)
-- is non-decreasing
-- is maximal for tl
-
-algorithm compares hd with the first element of rest:
-
-If rest = [] or hd ≤ first(rest), 
-  Algorithm returns: hd :: rest (keep the head element)
-  This output satisfies ensures because it is:
-  
-  (i) Subsequent:
-    - hd :: rest includes hd from position 0 of hd :: tl
-    - rest is a subsequence of tl (by IH)
-    - Therefore, hd :: rest is a subsequence of hd :: tl
-  
-  (ii) Non-decreasing:
-    - rest is non-decreasing (by IH)
-    - hd ≤ first(rest)
-    - Therefore, hd :: rest = hd :: first(rest)
-  
-  (iii) Maximality property:
-    - Adding hd to rest increases length by 1
-    - hd maintains non-decreasing order with rest
-    - Cannot add any other element from hd :: tl
-    - Therefore, hd :: rest is maximal
-
-If hd > first(rest)
-  Algorithm returns: rest (discards head element)
-  This output satisfies ensures because it is:
-  
-  (i) Subsequence property:
-    - rest is a subsequence of tl (by IH)
-    - tl is a subsequence of hd :: tl (by skipping hd)
-    - By transitivity, rest is a subsequence of hd :: tl
-  
-  (ii) Non-decreasing property:
-    - rest is non-decreasing (by IH)
-  
-  (iii) Maximality property:
-    - Cannot include hd because hd > first(rest)
-    - Including hd would violate non-decreasing property
-    - rest is maximal for the remaining elements after hd
-    - Therefore, rest is maximal
+    <<invariant
+        Initialisation: 
+        For lists of length 0 and 1, the algorithm produces correct output.
+        
+        Length n = 0 (lst = []):
+        - Input satisfies requires: [] is a valid list
+        - Algorithm returns: []
+        - Output satisfies ensures [] is: 
+          - (i) a subsequence of []
+          - (ii) trivially non-decreasing
+          - (iii) maximal (cannot add more elements)
+        
+        Length n = 1 (lst = [x]):
+        - Input satisfies requires: [x] is a valid list
+        - Algorithm returns: [x]
+        - Output satisfies ensures [x] is : 
+          - (i) a subsequence of [x]
+          - (ii) trivially non-decreasing
+          - (iii) maximal (cannot add more elements)
+        
+        Maintenance:
+        For a list lst = hd :: tl of length n+1 where n ≥ 1, assuming the 
+        tail tl produces a correct result rest, the algorithm maintains 
+        correctness by comparing hd with first(rest).
+        
+        If rest = [] or hd ≤ first(rest):
+        Algorithm returns hd :: rest, which satisfies ensures because:
+        - (i) hd :: rest is a subsequence of hd :: tl
+        - (ii) hd :: rest is non-decreasing
+        - (iii) hd :: rest is maximal
+        
+        If hd > first(rest):
+        Algorithm returns rest, which satisfies ensures because:
+        - (i) rest is a subsequence of hd :: tl
+        - (ii) rest is non-decreasing
+        - (iii) rest is maximal (cannot include hd without violating 
+          non-decreasing property)
+        
+        Termination: 
+        The algorithm terminates because each recursive call is made on the 
+        tail of the list, which is strictly smaller in structure, until the 
+        base case is reached and the recursion is stopped.
+    invariant>>
 
 
-TERMINATION
-The algorithm terminates because:
-- Each recursive call is made on the tail of the list, which is strictly 
-  smaller in structure, until the base case is reached and the recursion is stopped.
-- Therefore, the algorithm always terminates
+
+    <<induction
+        base case:
+        Length n = 0 (lst = []):
+        - Input satisfies requires: [] is a valid list
+        - Algorithm returns: []
+        - Output satisfies ensures [] is: 
+          - (i) a subsequence of []
+          - (ii) trivially non-decreasing
+          - (iii) maximal (cannot add more elements)
+        
+        Length n = 1 (lst = [x]):
+        - Input satisfies requires: [x] is a valid list
+        - Algorithm returns: [x]
+        - Output satisfies ensures [x] is : 
+          - (i) a subsequence of [x]
+          - (ii) trivially non-decreasing
+          - (iii) maximal (cannot add more elements)
+
+        inductive hypothesis:
+        For all lists of length k where 0 ≤ k < n, if the input satisfies 
+        the requires clause, then stalin_sort produces a list that satisfies 
+        the ensures clause.
+
+        inductive step:
+        For a list lst = hd :: tl of length n+1 where n ≥ 1.
+        
+        The tail tl has length n, so by the inductive hypothesis, stalin_sort 
+        tl produces a list rest that:
+        - is a subsequence of tl (preserves order)
+        - is non-decreasing
+        - is maximal for tl
+        
+        The algorithm compares hd with the first element of rest:
+        
+        If rest = [] or hd ≤ first(rest), 
+        Algorithm returns: hd :: rest (keep the head element)
+        This output satisfies ensures because it is:
+        
+        (i) Subsequent:
+          - hd :: rest includes hd from position 0 of hd :: tl
+          - rest is a subsequence of tl (by IH)
+          - Therefore, hd :: rest is a subsequence of hd :: tl
+        
+        (ii) Non-decreasing:
+          - rest is non-decreasing (by IH)
+          - hd ≤ first(rest)
+          - Therefore, hd :: rest = hd :: first(rest)
+        
+        (iii) Maximality property:
+          - Adding hd to rest increases length by 1
+          - hd maintains non-decreasing order with rest
+          - Cannot add any other element from hd :: tl
+          - Therefore, hd :: rest is maximal
+        
+        If hd > first(rest)
+        Algorithm returns: rest (discards head element)
+        This output satisfies ensures because it is:
+        
+        (i) Subsequence property:
+          - rest is a subsequence of tl (by IH)
+          - tl is a subsequence of hd :: tl (by skipping hd)
+          - By transitivity, rest is a subsequence of hd :: tl
+        
+        (ii) Non-decreasing property:
+          - rest is non-decreasing (by IH)
+        
+        (iii) Maximality property:
+          - Cannot include hd because hd > first(rest)
+          - Including hd would violate non-decreasing property
+          - rest is maximal for the remaining elements after hd
+          - Therefore, rest is maximal
+    induction>>
+    
+proof>>
+
 
 proof>>
 
