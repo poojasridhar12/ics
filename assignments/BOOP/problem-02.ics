@@ -6,18 +6,20 @@ collaborators: None
 problem: Problem 2: List Reversal 
 header>>
 
-<<problem 1: Problem 2: List Reversal 
+<<Problem 2: List Reversal 
+
 
 <<blueprint
-requires: 
-lst is a list of any type 'a
+        <<functional-correctness
+            requires: lst is a list of any type 'a
 
-ensures:
-- if empty list, return empty list 
-- if containing some element, return a new list containing elements of lst in reverse order
-- length of returned list = length of lst
+
+            ensures:
+                (i) if empty list, return empty list 
+                (ii) if containing some element, return a new list containing elements of lst in reverse order
+                (iii) length of returned list = length of lst
+        functional-correctness>>
 blueprint>>
-
 
 
 <<operational steps
@@ -52,26 +54,32 @@ ocaml code>>
 
 
 <<proof
-INDUCTION
-  Base Case 1 - An empty list reversed is still empty, hence proved
-  Base Case 2 - A single element list reversed is still the same list, hence proved
-  
-  Inductive hypothesis 
-    - Assume for any list length k, the function reverses the list 
-  
-  Inductive Step
-    - For a list length k + 1, it would be of the structure of head :: tail, wiith the tail being k, so that it would be head + tail, or k + 1
-    - When doing reverse tail, the tail is reversed
-    - The head then can be appended to the reversed tail, such that reverse tail :: head
-    - Therefore, the first element of the original list is now at the end, thus reversing the whole list
 
-TERMINATION
-  - The function calls itself recursively with the tail of the list, which is smaller than the original list.
-  - Eventually the recursion reaches the base case of an empty list and stops the recurison
-  - This terminates the reverse function for all finite lists 
+        <<invariant
+            Initialisation: 
+            An empty list reversed is still empty. A single element list reversed is still the same list.
+            
+            Maintenance:
+            For a list length k + 1, it would be of the structure of head :: tail, with the tail being k, so that it would be head + tail, or k + 1. When doing reverse tail, the tail is reversed. The head then can be appended to the reversed tail, such that reverse tail :: head. Therefore, the first element of the original list is now at the end, thus reversing the whole list.
+            
+            Termination: 
+            The function calls itself recursively with the tail of the list, which is smaller than the original list. Eventually the recursion reaches the base case of an empty list and stops the recursion. This terminates the reverse function for all finite lists.
+        invariant>>
+
+
+
+        <<induction
+            base case:
+            An empty list reversed is still empty, hence proved. A single element list reversed is still the same list, hence proved.
+
+            inductive hypothesis:
+            Assume for any list length k, the function reverses the list.
+
+            inductive step:
+            For a list length k + 1, it would be of the structure of head :: tail, with the tail being k, so that it would be head + tail, or k + 1. When doing reverse tail, the tail is reversed. The head then can be appended to the reversed tail, such that reverse tail :: head. Therefore, the first element of the original list is now at the end, thus reversing the whole list.
+        induction>>
+        
 proof>>
-
-
 
 
 problem>>
