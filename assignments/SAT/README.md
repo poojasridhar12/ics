@@ -2,48 +2,24 @@
 
 ## The SAT Problem Challenge
 
-The Boolean Satisfiability Problem (SAT) is one of the most fundamental problems in computer science. Given a Boolean formula in Conjunctive Normal Form (CNF), the task is to determine whether there exists an assignment of truth values to variables that makes the entire formula true.
-
-SAT was the first problem proven to be NP-complete by Stephen Cook in 1971, making it a cornerstone of computational complexity theory. Modern SAT solvers use sophisticated algorithms like Conflict-Driven Clause Learning (CDCL) to solve instances with thousands of variables efficiently.
-
-## Your Mission: Implement a CDCL SAT Solver
-
-Your task is to convert a complete CDCL SAT solver from Python to OCaml. This involves understanding the algorithm, data structures, and implementation details, then recreating the entire system in a functional programming language.
+This project implements a Conflict-Driven Clause Learning (CDCL) SAT solver, an algorithm. The solver determines whether Boolean formulas in Conjunctive Normal Form (CNF) are satisfiable, returning either a satisfying assignment or proof of unsatisfiability.
 
 ## Implementation Requirements
-
-### Input and Output Format
-
-Your OCaml implementation must maintain exact compatibility with the Python version:
-
-**Input**: DIMACS CNF format (more details below)
-
-**Output**: 
-- For SAT instances: "SAT" followed by the satisfying assignment
-- For UNSAT instances: "UNSAT"
+1. DIMACS CNF format support
+2. Outputs SAT with satisfying assignment, else outputs UNSAT
 
 ### Core Algorithm Components
 
-1. **Unit Propagation**: Using watched literals for efficiency
-2. **Conflict Analysis**: Learning new clauses from conflicts
-3. **Backtracking**: Non-chronological backtracking based on learned clauses
-4. **Variable Selection**: Deterministic selection (first unassigned variable)
-5. **Value Selection**: Deterministic selection (always True first)
+1. **Unit Propagation**: When a clause has all but one literal falsified, the remaining literal must be true. This is done by the unit_propagation function iteratively scans all clauses, identifies unit clauses, and assigns the forced literal. Assignments are tagged with the current decision level and the clause that forced them (the antecedent).
+2. **Conflict Analysis**: This is executed through the conflict_analysis function that resolves clauses along the implication graph, beginning from the conflict clause, repeatedly resolving on variables at the current decision level until only one remains (the First UIP).
+3. **Backtracking**: After learning a clause, backtrack to the second-highest decision level in the learned clause. This is executed through the backtrack function which removes all assignments with decision level greater than the computed backtrack level, resetting the solver to a safer state.
+4. **Variable Selection**: This chooses an unassigned variable for the next decision. This is done through the pick_branching_variable function selects the first unassigned variable from the sorted variable list. 
+5. **Value Selection**: This choses a truth value for the selected variable. This is executed via the pick_branching_variable function which always pairs the selected variable with true at first.
 
-### Key Data Structures
-
-- **Clauses**: Lists of literal tuples (variable, is_negated)
-- **Assignments**: Mapping variables to (value, antecedent, decision_level)
-- **Watched Literals**: For efficient unit propagation
-- **Decision Stack**: For tracking decision levels
-
-## Reference Implementation
-
-The Python implementation provides a complete working example:
-
-- **`src/sat_solver.py`**: Core CDCL algorithm
-- **`src/parser.py`**: DIMACS format parsing and solution writing
-- **`main.py`**: Main entry point and program flow
+## Implementation
+- **`src/sat_solver.ml`**: Core CDCL algorithm
+- **`src/parser.ml`**: DIMACS format parsing and solution writing
+- **`main.ml`**: Main entry point and program flow
 
 ## DIMACS CNF Format
 
@@ -58,52 +34,19 @@ The DIMACS CNF format is the standard format for representing Boolean formulas i
   - Negative integers represent negative literals (e.g., -1 = ¬x₁)
   - 0 marks the end of each clause
 
-### Example
-
-```
-c Example CNF formula: (x1 OR x2) AND (NOT x1 OR x3) AND (NOT x2 OR NOT x3)
-c Expected: SAT
-p cnf 3 3
-1 2 0
--1 3 0
--2 -3 0
-```
-
-This represents the formula: (x₁ ∨ x₂) ∧ (¬x₁ ∨ x₃) ∧ (¬x₂ ∨ ¬x₃)
 
 ## Project Structure
 
 ```
 SAT/
 ├── src/
-│   ├── parser.py      # DIMACS parsing and solution writing
-│   ├── sat_solver.py  # Core CDCL algorithm implementation
-│   └── main.py        # Main entry point
+│   ├── parser.ml      # DIMACS parsing and solution writing
+│   ├── sat_solver.ml  # Core CDCL algorithm implementation
+│   └── main.ml        # Main entry point
 ├── tests/
 │   ├── input/         # Test input files (test_1.cnf to test_6.cnf)
 │   └── output/        # Expected output files
 └── README.md
 ```
 
-## Running the Python Version
-
-```bash
-python3 main.py <input_file> <output_file>
-```
-
-Example:
-```bash
-python3 main.py tests/input/test_1.cnf tests/output/test_1_result.txt
-```
-
-## Your Challenge
-
-1. **Understand the CDCL algorithm** by studying the Python implementation
-2. **Convert the entire system to OCaml** while maintaining exact functionality
-3. **Test your implementation** against all provided test cases
-4. **Ensure compatibility** with the original input/output format
-
-Remember: The goal is not just to create a working SAT solver, but to understand and implement the sophisticated algorithms that make modern SAT solving possible.
-
-Good luck with your implementation!
-
+This code has worked with all the test cases provided, and has returned the expected output. 
