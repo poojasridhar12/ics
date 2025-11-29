@@ -9,18 +9,21 @@ header>>
 <<problem 1: Problem 3: Egyptian Fractions
 
 <<blueprint
-requires:
-- numerator n : int, m (denominator): int 
-- 0 < n < m
-- original fraction n/m > 0
+        <<functional-correctness
+            requires:
+                (i) numerator n : int, m (denominator): int
+                (ii) 0 < n < m
+                (iii) original fraction n/m > 0
 
-ensures:
-- returns a finite list [d1; d2; ...; dk] of positive integers such that
+            ensures:
+                (i) returns a finite list [d1; d2; ...; dk] of positive integers such that
     n/m = 1/d1 + 1/d2 + ... + 1/dk
-- forall n in [1..k], n = 1
-- m = d1 < d2 < ... < dk
-- algorithm terminates in finite steps -> k : int
-- 1/d1 < n/m
+                (ii) forall n in [1..k], n = 1
+                (iii) m = d1 < d2 < ... < dk
+                (iv) algorithm terminates in finite steps -> k : int
+                (v) 1/d1 < n/m
+
+        functional-correctness>>
 blueprint>>
 
 
@@ -110,30 +113,42 @@ ocaml code>>
 
 
 <<proof
-INDUCTION
-Base case is that n = 1
-- if the numerator is 1, then 1/m is a unit fraction, and the algorithm returns 1/m, terminating immediately 
 
-Inductive Hypothesis 
-- Assume that for all numerators n', with 1 =< n' =< num, the alogrithm holds true, and decomposes n'/m' into a finite sum of distinct unit fractions
+        <<invariant
+            Initialisation: 
+            If the numerator is 1, then 1/m is a unit fraction, and the algorithm returns 1/m, terminating immediately
+            
+            Maintenance:
+            - Select d = ceiling (m / (n + 1)), largest unit fraction 1/d such that 1/d <= (n + 1)/m
+            - Calculate the remainder: remainder = (n + 1)/m - 1/d = ((n + 1)*d - m) / (m * d)
+            - Simplify to get remainder fraction n'/m' with n' < n + 1
+            - Since 1/d is less than all fractions in the recursive decomposition, denominators are strictly increasing
+            - d < m. This proves the strictly increasing property of denominators
+            
+            Termination: 
+            - Numerator of the remainder fraction strictly decreases at each step, so the recursion terminates
+            - n decreases in each call, and as all numerators are bound to terminate at 1, the recursion terminates after a finite amount of calls
+        invariant>>
 
-Inductive Step: Prove that it is true for (n + 1)/m
-  - Select d = ceiling (m / (n + 1)), largest unit fraction 1/d such that 1/d <= (n + 1)/m
 
-  - calculate the remainder:
-    remainder = (n + 1)/m - 1/d = ((n + 1)*d - m) / (m * d)
 
-  - Simplify to get remainder fraction n'/m' with n' < n + 1
-  - By inductive hypothesis, the algorithm correctly decomposes n'/m'
-  - Prepend 1/d to this decomposition to form the decomposition of (n + 1)/m
-  - Since 1/d is less than all fractions in the recursive decomposition, denominators are strictly increasing
-  - Numerator of the reminder fraction strictly decreases at each step, so the recursion terminates.
+        <<induction
+            base case:
+            n = 1 - if the numerator is 1, then 1/m is a unit fraction, and the algorithm returns 1/m, terminating immediately
 
-Therefore, the algorithm correctly and finitely decomposes any proper fraction into a sum of distinct unit fractions.
+            inductive hypothesis:
+            Assume that for all numerators n', with 1 =< n' =< num, the algorithm holds true, and decomposes n'/m' into a finite sum of distinct unit fractions
+
+            inductive step:
+            Prove that it is true for (n + 1)/m
+            - Select d = ceiling (m / (n + 1)), largest unit fraction 1/d such that 1/d <= (n + 1)/m
+            - Calculate the remainder: remainder = (n + 1)/m - 1/d = ((n + 1)*d - m) / (m * d)
+            - Simplify to get remainder fraction n'/m' with n' < n + 1
+            - By inductive hypothesis, the algorithm correctly decomposes n'/m'
+            - Prepend 1/d to this decomposition to form the decomposition of (n + 1)/m
+            - Therefore, the algorithm correctly and finitely decomposes any proper fraction into a sum of distinct unit fractions
+        induction>>
+        
 proof>>
-
-TERMINATION
-- d < m. This proves the strictly increasing property of denominators 
-- n decreases in each call, and as all numerators are bound to terminate at 1, the recursion terminates after a finite amount of calls. 
 
 problem>>
