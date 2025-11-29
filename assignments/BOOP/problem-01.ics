@@ -2,21 +2,25 @@
 assignment: Assignment 1
 student: Pooja Sridhar
 date: 25 October 2025
-collaborators: None
+collaborators: Use of AI for editing the format
 problem: Problem 1: Division is Repeated Subtraction
 header>>
 
 <<problem 1: Problem 1: Division is Repeated Subtraction
 
+
 <<blueprint
-  requires: 
-    (i) a : nat
-    (ii) b : nat, b > 0
-  
-  ensures: Returns a pair (q, r) such that:
-    (i)  q : nat, r : nat 
-    (ii) a = (b * q) + r
-    (iii) r < b
+        <<functional-correctness
+              requires: 
+                (i) a : nat
+                (ii) b : nat, b > 0:
+
+
+              ensures: Returns a pair (q, r) such that:
+                (i)  q : nat, r : nat 
+                (ii) a = (b * q) + r
+                (iii) r < b
+        functional-correctness>>
 blueprint>>
 
 
@@ -69,43 +73,58 @@ ocaml code>>
 
 
 
-
 <<proof
-INDUCTION
-  Goal: Given two natural numbers `a` and `b` such that `b` is not zero, the division function returns quotient `q` and remainder `r`
-      1. a = b * q + r
-      2. r < b
-  
-  Base case (a < b)
-    If a < b, then b cannot be subtracted, so the q = 0 and the r = a. This is proven below 
-      1. a = b * 0 + a = a
-      2. r = a < b
 
-  Induction Hypothesis 
-    For all k < a, the division function returns a quotient qk and remainder rk such that: 
-      (i) k = b × qk + rk 
-      (ii) rk < b
-
-  Inductive Step 
-    for input a >= b, the function returns q, r satisfying: 
-      (i) a = b × q + r
-      (ii) r < b
-
-    - Since a >= b, algorithm subtracts b once and calls recursively on a − b, which is smaller than a.
-    - By inductive hypothesis, the recursive call returns qk, rk such that: a - b = b * qk + rk (where rk < b)
-    - The alogirtm then returns q = qk + 1, r = rk. This results in 
-      a = b + (a - b)
-        = b + b * qk + rk
-        = b * (qk + 1) + rk
-        = b * q + r             (* thus, r = rk < b still holds *)
-    - Thus the properties are held for a
+        <<invariant
+            Initialisation: 
+            If a < b, then q = 0 and r = a. This satisfies:
+              1. a = b * 0 + a = a
+              2. r = a < b
+            
+            Maintenance:
+            For input a >= b, given that the recursive call on a - b returns qk, rk 
+            satisfying a - b = b * qk + rk (where rk < b), the algorithm returns 
+            q = qk + 1 and r = rk. This maintains the properties:
+              a = b + (a - b)
+                = b + b * qk + rk
+                = b * (qk + 1) + rk
+                = b * q + r
+              r = rk < b still holds
+            
+            Termination: 
+            The recursive call subtracts b from a, producing diff = a - b, which is 
+            smaller than a. Since the input size decreases with each call and there 
+            are a finite number of recursive calls, the base case of a < b is 
+            eventually reached. The recursion stops when reaching the base case, so 
+            the function terminates.
+        invariant>>
 
 
-TERMINATION
-- Because the recursive call subtracts b from a, producing a smaller number diff = a - b, diff will be less than a as the size of the input decreases in each call. 
-- As there are a finite number of recursive calls, the base case of a < b can be reached. 
-- The recursion stops when reaching the base case, so the function terminates. 
 
+        <<induction
+            base case:
+            If a < b, then q = 0 and r = a.
+              1. a = b * 0 + a = a
+              2. r = a < b
+
+            inductive hypothesis:
+            For all k < a, the division function returns a quotient qk and remainder 
+            rk such that: 
+              (i) k = b × qk + rk 
+              (ii) rk < b
+
+            inductive step:
+            For input a >= b, the algorithm subtracts b once and calls recursively on 
+            a - b, which is smaller than a. By inductive hypothesis, the recursive 
+            call returns qk, rk such that a - b = b * qk + rk (where rk < b). The 
+            algorithm then returns q = qk + 1, r = rk. This results in:
+              a = b + (a - b)
+                = b + b * qk + rk
+                = b * (qk + 1) + rk
+                = b * q + r
+            Thus, r = rk < b still holds, and the properties are held for a.
+        induction>>
+        
 proof>>
 
 problem>>
