@@ -21,7 +21,7 @@ header>>
                 (ii) forall n in [1..k], n = 1
                 (iii) m = d1 < d2 < ... < dk
                 (iv) algorithm terminates in finite steps -> k : int
-                (v) 1/d1 < n/m
+                (v) 1/d1 =< n/m
 
         functional-correctness>>
 blueprint>>
@@ -45,7 +45,7 @@ My understanding of the Greedy algorithm:
 3. Recursive Case n > 1
 - Calcuate the largest unit fraction 1/d that is =< n/m 
   - to see what is the largest fraction, divide the original fraction and check the ceiling for division
-  - ceiling is n/m rounded up to the nearest integer = d 
+  - ceiling is m/n rounded up to the nearest integer = d 
 - subtract 1/d from n/m
   - new_num/new_denom = n/m - 1/d = (num * d - denom)/denom * d
 - Simplify the remainder fraction using gcd to reduce to lowest terms (simpler_num, simpler_denom)
@@ -71,7 +71,7 @@ operational steps>>
 let gcd (a : int) (b : int) : int =
   let rec gcd_helper (x : int) (y : int) : int option =
     match y with
-    | 0 -> some x
+    | 0 -> Some x
     | _ -> gcd_helper y (x mod y)
   in
   gcd_helper (abs a) (abs b)
@@ -98,10 +98,14 @@ let egyptian_fractions (n : int) (m : int) : (int * int) list =
         let d = ceil_div den num in
         let new_num = num * d - den in
         let new_den = den * d in
-        let (simpler_num, simpler_den) = simplify new_num new_den in
-        greedy_helper simpler_num simpler_den ((1, d) :: acc)
+        (* handle the option returned by simplify *)
+        match simplify new_num new_den with
+        | None -> failwith "Failed to simplify fraction"
+        | Some (simpler_num, simpler_den) ->
+            greedy_helper simpler_num simpler_den ((1, d) :: acc)
     in
     greedy_helper n m []
+
 
 (* converting the list to a string with the function of sum between each fraction *)
 let fraction_list_to_string (fractions : (int * int) list) : string =   fractions
