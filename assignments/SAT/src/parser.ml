@@ -1,7 +1,4 @@
-(* parser.ml - DIMACS CNF format parsing and solution writing *)
-
-(** Parse a DIMACS CNF file
-    Returns: (num_vars, clauses) where clauses is a list of int lists *)
+(** Parse a DIMACS CNF file and returns: (num_vars, clauses) where clauses is a list of int lists *)
 let parse_dimacs (filename : string) : int * int list list =
   let ic = open_in filename in
   let lines = ref [] in
@@ -58,7 +55,7 @@ let parse_dimacs (filename : string) : int * int list list =
 
 
 (** Write solution to output file in DIMACS format
-    assignment: None for UNSAT, Some (value_array) for SAT
+    assign: None for UNSAT, Some (value_array) for SAT
     where value_array.(v) = Some true/false if assigned, None if unassigned *)
 let write_solution (filename : string)
     (assignment : bool option array option) : unit =
