@@ -2,9 +2,6 @@
 
 Here, I take the paintext and the cipher text and map them, position 0, H is I. Then I taje each rotor position combination and for each position, try to derive plugboard settings. If contradictions need to be found, then they need to be elimanted. *)
 
-ANOTHER PERSON'S CODE DAWG:
-
-
 (* SMART ENIGMA BREAKER - Using Turing's Bombe Logic *)
 (* Usage: ocaml breaker.ml <plaintext> <ciphertext> *)
 
