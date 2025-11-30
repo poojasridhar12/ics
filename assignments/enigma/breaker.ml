@@ -161,163 +161,92 @@ let index_of_coincidence text =
 
 (* Logic *)
 
-(* Advanced scoring combining multiple heuristics *)
-let score_configuration crib cipher test_output =
-  let match_score = float_of_int (
-    let n = min (String.length test_output) (String.length cipher) in
-    let rec aux i acc = 
-      if i=n then acc 
-      else aux (i+1) (if test_output.[i]=cipher.[i] then acc+1 else acc) 
-    in aux 0 0
-  ) in
-  
-  (* Weight different factors *)
-  let freq_score = 1.0 /. (1.0 +. frequency_score test_output) in
-  let ic_score = index_of_coincidence test_output in
-  let ic_weight = if ic_score > 0.06 then ic_score *. 10.0 else 0.0 in
-  
-  (* Combined score favoring exact matches *)
-  (match_score *. 10.0) +. freq_score +. ic_weight
+(* ================== UPDATE THE BREAK MODE SECTION ================== *)
 
-(* Crib-based early elimination *)
-let is_impossible_by_crib crib cipher positions =
-  (* Check for impossible self-encryption (Enigma property: letter never encrypts to itself) *)
-  let n = min (String.length crib) (String.length cipher) in
-  let rec check i =
-    if i >= n then false
-    else
-      let c_plain = Char.uppercase_ascii crib.[i] in
-      let c_cipher = Char.uppercase_ascii cipher.[i] in
-      if c_plain >= 'A' && c_plain <= 'Z' && c_cipher >= 'A' && c_cipher <= 'Z' then
-        if c_plain = c_cipher then true  (* Impossible! *)
-        else check (i+1)
-      else check (i+1)
-  in
-  check 0
-
-(* Generate plugboards more efficiently with constraints *)
-let generate_plugboards_smart crib cipher =
-  let letters = List.init 26 (fun i -> Char.chr (i + Char.code 'A')) in
-  
-  (* Extract likely plugboard candidates from crib analysis *)
-  let likely_pairs = ref [] in
-  for i = 0 to min (String.length crib) (String.length cipher) - 1 do
-    let c1 = Char.uppercase_ascii crib.[i] in
-    let c2 = Char.uppercase_ascii cipher.[i] in
-    if c1 >= 'A' && c1 <= 'Z' && c2 >= 'A' && c2 <= 'Z' && c1 <> c2 then
-      likely_pairs := (c1, c2) :: !likely_pairs
-  done;
-  
-  let combos = ref [[]] in
-  
-  (* Prioritize likely pairs first *)
-  List.iter (fun (a,b) ->
-    if not (has_plugboard_contradiction [(a,b)]) then
-      combos := [(a,b)] :: !combos
-  ) !likely_pairs;
-  
-  (* Generate 1-pair combinations *)
-  let rec one_pair = function
-    | [] | [_] -> ()
-    | x::xs -> 
-        List.iter (fun y -> 
-          if not (has_plugboard_contradiction [(x,y)]) then
-            combos := [(x,y)]::!combos
-        ) xs; 
-        one_pair xs
-  in
-  one_pair letters;
-  
-  (* Generate 2-pair combinations with early termination *)
-  let max_two_pairs = 100 in  (* Limit search space *)
-  let counter = ref 0 in
-  let rec two_pair = function
-    | [] | [_] | [_;_] | [_;_;_] -> ()
-    | a::rest when !counter < max_two_pairs ->
-        List.iter (fun b ->
-          if !counter < max_two_pairs then
-            let remaining = List.filter (fun c -> c<>a && c<>b) rest in
-            let rec choose_cd = function
-              | [] | [_] -> ()
-              | c::rest3 when !counter < max_two_pairs ->
-                  List.iter (fun d -> 
-                    if not (has_plugboard_contradiction [(a,b);(c,d)]) then (
-                      combos := [(a,b);(c,d)]::!combos;
-                      incr counter
-                    )
-                  ) rest3;
-                  choose_cd rest3
-              | _ -> ()
-            in
-            choose_cd remaining
-        ) rest;
-        two_pair rest
-    | _ -> ()
-  in
-  two_pair letters;
-  !combos
-
-(* Try plugboards with early termination *)
-let try_plugboards_fast cfg crib cipher positions =
-  let plugboards = generate_plugboards_smart crib cipher in
-  let best_match = ref None in
-  let best_score = ref 0.0 in
-  
-  List.iter (fun pb ->
-    match !best_match with
-    | Some _ when !best_score >= float_of_int (String.length crib) -> ()  (* Exact match found *)
-    | _ ->
-        let cfg_test = { cfg with positions; plugboard=pb } in
-        let test_output = encrypt_string cfg_test crib in
-        let score = score_configuration crib cipher test_output in
+| "break" ->
+    Printf.printf "Mode: Break (Bombe-style)\nCrib: %s\nCipher: %s\n\n" break_crib break_cipher;
+    
+    (* Validate inputs *)
+    if String.length break_crib = 0 || String.length break_cipher = 0 then
+      Printf.printf "Error: Crib and cipher must be non-empty\n"
+    else (
+      (* Remove spaces and validate lengths match *)
+      let clean_str s = String.map (fun c -> if c = ' ' then c else c) s 
+        |> String.uppercase_ascii in
+      let crib_clean = clean_str break_crib in
+      let cipher_clean = clean_str break_cipher in
+      
+      let crib_letters = String.fold_left (fun acc c -> 
+        if c >= 'A' && c <= 'Z' then acc + 1 else acc) 0 crib_clean in
+      let cipher_letters = String.fold_left (fun acc c -> 
+        if c >= 'A' && c <= 'Z' then acc + 1 else acc) 0 cipher_clean in
+      
+      if crib_letters <> cipher_letters then
+        Printf.printf "Error: Crib (%d letters) and cipher (%d letters) must have same length\n" 
+          crib_letters cipher_letters
+      else (
+        Printf.printf "Analyzing with cryptanalytic heuristics...\n";
         
-        if test_output = cipher then (
-          best_match := Some (pb, cfg_test);
-          best_score := infinity
-        ) else if score > !best_score then (
-          best_score := score;
-          if score > float_of_int (String.length crib) *. 0.8 then
-            best_match := Some (pb, cfg_test)
-        )
-  ) plugboards;
-  !best_match
-
-(* Improved rotor search with early pruning *)
-let find_top_rotors_smart crib cipher k =
-  (* Handle edge cases *)
-  if String.length crib = 0 || String.length cipher = 0 then [] else
-  
-  let scored = ref [] in
-  let pruned = ref 0 in
-  
-  for a=0 to 25 do 
-    for b=0 to 25 do 
-      for c=0 to 25 do
-        let pos = [a;b;c] in
+        (* Stage 1: Smart rotor search with pruning *)
+        let top_rotors = find_top_rotors_smart break_crib break_cipher 10 in  (* Increase k to 10 *)
+        Printf.printf "\nTop %d rotor position candidates:\n" (min 10 (List.length top_rotors));
         
-        (* Early elimination: check for impossible configurations *)
-        if not (is_impossible_by_crib crib cipher pos) then (
-          let cfg_test = { base_cfg with positions=pos; plugboard=[] } in
-          let test_output = encrypt_string cfg_test crib in
-          let sc = score_configuration crib cipher test_output in
-          scored := (sc,pos)::!scored
-        ) else
-          incr pruned
-      done 
-    done 
-  done;
-  
-  Printf.printf "Pruned %d impossible configurations\n" !pruned;
-  
-  (* Sort by score and take top k *)
-  !scored 
-  |> List.sort (fun (s1,_)(s2,_) -> compare s2 s1) 
-  |> fun l -> 
-      let rec take n acc = function
-        | [] -> List.rev acc
-        | x::xs when n > 0 -> take (n-1) (x::acc) xs
-        | _ -> List.rev acc
-      in take k [] l
+        let shown = ref 0 in
+        List.iter (fun (score,pos) ->
+          if !shown < 10 then (
+            Printf.printf "  Score: %.2f, Position: %s\n" 
+              score
+              (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos));
+            incr shown
+          )
+        ) top_rotors;
+        
+        (* Stage 2: Plugboard search with validation *)
+        Printf.printf "\nSearching plugboard configurations...\n";
+        let rec search count = function
+          | [] -> 
+              Printf.printf "\nNo exact match found after testing %d configurations.\n" count;
+              Printf.printf "This likely means the cipher was not generated by this Enigma implementation\n";
+              Printf.printf "from the given crib with the searched rotor positions and plugboards.\n"
+          | (score,pos)::tl ->
+              Printf.printf "Testing position %s (score: %.2f)...\n" 
+                (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos))
+                score;
+              match try_plugboards_fast base_cfg break_crib break_cipher pos with
+              | None -> search (count + 1) tl
+              | Some (pb,cfg_found) ->
+                  let decrypted = decrypt_string cfg_found break_cipher in
+                  (* Strict validation: decrypted must match crib *)
+                  let matches_crib = 
+                    let rec check i =
+                      if i >= String.length break_crib then true
+                      else if i >= String.length decrypted then false
+                      else
+                        let c1 = Char.uppercase_ascii break_crib.[i] in
+                        let c2 = Char.uppercase_ascii decrypted.[i] in
+                        if c1 >= 'A' && c1 <= 'Z' && c2 >= 'A' && c2 <= 'Z' then
+                          if c1 = c2 then check (i+1) else false
+                        else check (i+1)
+                    in check 0
+                  in
+                  
+                  if matches_crib then (
+                    Printf.printf "\n✓ Configuration Found!\n";
+                    Printf.printf "Rotor positions: %s\n" 
+                      (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos));
+                    Printf.printf "Plugboard pairs: %s\n" 
+                      (if pb = [] then "None" 
+                       else String.concat ", " (List.map (fun (a,b) -> Printf.sprintf "%c↔%c" a b) pb));
+                    Printf.printf "Decrypted text: %s\n" decrypted
+                  ) else (
+                    Printf.printf "  Found approximate match but validation failed (decrypted: %s)\n" decrypted;
+                    search (count + 1) tl
+                  )
+        in 
+        search 0 top_rotors
+      )
+    )
+
 
 (* main code *)
 let () =
