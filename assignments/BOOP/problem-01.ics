@@ -12,30 +12,37 @@ header>>
 <<blueprint
         <<functional-correctness
               requires: 
-                (i) a : nat
-                (ii) b : nat, b > 0:
+* a : nat ∧ b : nat 
+* No other preconditions on `a`. `b` may be `Zero`
 
 
-              ensures: Returns a pair (q, r) such that:
-                (i)  q : nat, r : nat 
-                (ii) a = (b * q) + r
-                (iii) r < b
+              ensures: 
+* The function `divmod (a, b)` returns a value of type `(nat * nat) option` satisfying:
+  * `divmod a b = None` ⇔ `b = Zero`.
+  * If `b ≠ Zero` then `divmod a b = Some (q, r)` such that:
+    1. `q : nat` and `r : nat`.
+    2. `a = b * q + r`. (Here `*` and `+` are the usual operations on `nat` defined by repeated addition.)
+    3. `r < b` (strict inequality on `nat`).
+* The algorithm always terminates.
         functional-correctness>>
 blueprint>>
 
 
 
 <<operational steps
-1. If the denominator b = 0. Return error 
+1. If `b = Zero`, return `None` (division by zero is undefined).
+2. Otherwise (so `b = Succ _`):
 
-2. If b is non-zero:
-   - We start off with the assumption that q = 0 and r = a
+   * Start with quotient `q = Zero` and remainder `r = a`.
+   * Repeatedly check: if `r < b` then stop and return `(q, r)`.
+   * If `r >= b`, compute `r' = r - b` (syntactic subtraction on `nat`), increment `q` to `Succ q`, set `r := r'` and repeat.
+3. Because each subtraction decreases the remainder `r` in the natural-number ordering and `r` is bounded below by `Zero`, this process must terminate.
+4. Return `Some (q, r)` with `r < b` when finished.
 
-3. If r < b, stop recursion and return (q, r) as the quotient and remainder.
+Edge cases:
 
-4. If r >= b, subtract b from r, increment q by 1, and recurse with the new values of q and r.
-
-5. Continue recursively until r < b, and then return q and r
+* `a = Zero` and `b ≠ Zero`: algorithm returns `Some (Zero, Zero)`.
+* `a < b`: returns `Some (Zero, a)`.
 =operational steps>>
 
 
@@ -44,31 +51,32 @@ blueprint>>
 <<ocaml code
 type nat = Zero | Succ of nat
 
-let rec less_than (a : nat) (b : nat) : bool =
+let rec lt (a : nat) (b : nat) : bool =
   match (a, b) with
-  | (_, Zero) -> false
+  | (Zero, Zero) -> false
   | (Zero, Succ _) -> true
-  | (Succ a', Succ b') -> less_than a' b'                    (* less than a = a' *)
+  | (Succ _ , Zero) -> false
+  | (Succ a', Succ b') -> lt a' b'
 
-let rec minus (a : nat) (b : nat) : nat =
+
+let rec sub (a : nat) (b : nat) : nat =
   match (a, b) with
-  | (Zero, Zero) -> Some Zero
-  | (Zero, Succ _) -> None
-  | (_, Zero) -> Some a
-  | (Succ a', Succ b') -> minus a' b'
+  | (Zero, Zero) -> Zero
+  | (_, Zero) -> a
+  | (Succ a', Succ b') -> sub a' b'
 
-let rec divmod (a : nat) (b : nat) : (nat * nat) =
+
+let rec divmod_aux (q : nat) (r : nat) (b : nat) : (nat * nat) =
+  if lt r b then (q, r)
+  else
+    let r' = sub r b in
+    divmod_aux (Succ q) r' b
+
+
+let divmod (a : nat) (b : nat) : (nat * nat) option =
   match b with
-  | Zero -> None                                             (* division by zero undefined *)
-  | _ ->
-    if less_than a b then Some (Zero, a)                     (* q = 0, r = a *)
-    else
-      match minus a b with
-      | None -> None
-      | Some diff ->
-        match divmod diff b with
-        | None -> None
-        | Some (q, r) -> Some (Succ q, r)
+  | Zero -> None
+  | _ -> Some (divmod_aux Zero a b)
 ocaml code>>
 
 
@@ -76,12 +84,17 @@ ocaml code>>
 <<proof
 
         <<invariant
-            Initialisation: 
-            If a < b, then q = 0 and r = a. This satisfies:
-              1. a = b * 0 + a = a
-              2. r = a < b
+            Initialisation: At each call `divmod_aux q r b` (with fixed `b ≠ Zero`) the following invariant holds: `original_a = b * q + r`, where `original_a` is the initial `a` passed to `divmod` (we view `q` and `r` as the current quotient and remainder accumulated so far).
+
             
             Maintenance:
+
+* Suppose `divmod_aux q r b` is called and `lt r b` is `false` (so `r >= b`).
+* Then `r' = sub r b` is mathematically `r - b`.
+* After the recursive call `divmod_aux (Succ q) r' b`, the new pair `(q', r') = (Succ q, r - b)` satisfies:
+
+  * `b * (Succ q) + r' = b * q + b + (r - b) = b * q + r`, so INV is preserved.
+
             For input a >= b, given that the recursive call on a - b returns qk, rk 
             satisfying a - b = b * qk + rk (where rk < b), the algorithm returns 
             q = qk + 1 and r = rk. This maintains the properties:
@@ -91,21 +104,13 @@ ocaml code>>
                 = b * q + r
               r = rk < b still holds
             
-            Termination: 
-            The recursive call subtracts b from a, producing diff = a - b, which is 
-            smaller than a. Since the input size decreases with each call and there 
-            are a finite number of recursive calls, the base case of a < b is 
-            eventually reached. The recursion stops when reaching the base case, so 
-            the function terminates.
+            Termination: At each recursive step, the algorithm subtracts b from the current remainder r, producing a strictly smaller value r'. Since b ≠ Zero in all recursive paths, the remainder decreases every time and cannot decrease indefinitely over natural numbers. Therefore, the recursion must eventually reach the base case where r < b, at which point the algorithm stops and returns. Hence, the function always terminates.
         invariant>>
 
 
 
         <<induction
-            base case:
-            If a < b, then q = 0 and r = a.
-              1. a = b * 0 + a = a
-              2. r = a < b
+            base case: `a = Zero`: then since `b ≠ Zero`, `lt Zero b = true`, so `divmod_aux Zero Zero b` returns `(Zero, Zero)`. So `0 = b*0 + 0` and `0 < b`.
 
             inductive hypothesis:
             For all k < a, the division function returns a quotient qk and remainder 
@@ -113,27 +118,9 @@ ocaml code>>
               (i) k = b × qk + rk 
               (ii) rk < b
 
-            inductive step:
-            For input a >= b, the algorithm subtracts b once and calls recursively on 
-            a - b, which is smaller than a. By inductive hypothesis, the recursive 
-            call returns qk, rk such that a - b = b * qk + rk (where rk < b). The 
-            algorithm then returns q = qk + 1, r = rk. This results in:
-              a = b + (a - b)
-                = b + b * qk + rk
-                = b * (qk + 1) + rk
-                = b * q + r
-            Thus, r = rk < b still holds, and the properties are held for a.
+            inductive step: * **Inductive step**: Suppose for all `a'` smaller than `a` the property holds. If `lt a b = true`, we return `(Zero, a)` and `a < b` holds. Otherwise, `a >= b`; let `a' = sub a b`. Note `a' < a`. By induction hypothesis, `divmod a' b = Some (q, r)` with `a' = b*q + r` and `r < b`. Then `divmod a b` returns `Some (Succ q, r)` and a = b + a' = b + (b*q + r) = b*(q+1) + r with `r < b`. So property holds.
         induction>>
         
 proof>>
 
 problem>>
-
-
-
-
-
-
-
-
-
