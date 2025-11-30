@@ -32,6 +32,9 @@ naive ?
   - Append the head to the end of the reversed tail accumulatively 
   - Return the results 
 
+
+how does it handle space and time complexity ??
+
 efficient ?
 - Using tail recursion in this case (because recursive call is the last operation)
 - Example used for me to understand:
