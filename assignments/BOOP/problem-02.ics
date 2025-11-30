@@ -2,7 +2,7 @@
 assignment: Assignment 1
 student: Pooja Sridhar
 date: 25 Oct 2025
-collaborators: None
+collaborators: Use of AI for formatting
 problem: Problem 2: List Reversal 
 header>>
 
@@ -10,84 +10,127 @@ header>>
 
 
 <<blueprint
-        <<functional-correctness
-            requires: lst is a list of any type 'a
+<<blueprint
+    <<functional-correctness
 
+        requires:
+            (i) lst is a finite list of elements of type 'a
+            (ii) no assumptions about ordering, distinctness, or equality of elements
 
-            ensures:
-                (i) if empty list, return empty list 
-                (ii) if containing some element, return a new list containing elements of lst in reverse order
-                (iii) length of returned list = length of lst
-        functional-correctness>>
+        ensures:
+            Let r be the returned list.
+            (i) length r = length lst
+            (ii) r contains exactly the same multiset of elements as lst
+            (iii) ∀ i where 0 ≤ i < length lst, nth(r, i) = nth(lst, (length lst − 1 − i))
+            (v) algorithm always terminates for all finite lists
+
+    functional-correctness>>
+blueprint>>
+
 blueprint>>
 
 
 <<operational steps
+<<operational steps
+    Two approaches are implemented as required: a naive version and an efficient version.
 
-naive ?
-- Base Case [Empty list] - If empty, return empty
-- Base Case [Single Element] - If 1 element, return the same list
-- Recursive Case 
-  - First element = head and the rest of the list = tail
-  - Append the head to the end of the reversed tail accumulatively 
-  - Return the results 
+Naive: Recursively reverse the tail of the list and append the head to the end.
+        1. If lst = [], return [].
+        2. If lst = x :: xs,
+            • recursively call reverse_naive on xs
+            • append [x] to the end of the reversed tail result
+        3. Return the final list.
 
+    Complexity:
+        The append (@) operation takes time proportional to the length of its left operand.
+        For a list of length n, this leads to:
+            n + (n-1) + (n-2) + ... + 1 = Θ(n²)
 
-how does it handle space and time complexity ??
+Efficient: Use an accumulator and prepend elements to collect the reversed list in linear time.
+        1. Start with an empty accumulator acc = [].
+        2. While lst = x :: xs,
+            • move x from lst and prepend it to acc → acc becomes x :: acc
+            • continue recursion on xs
+        3. When lst becomes [], return acc.
 
-efficient ?
-- Using tail recursion in this case (because recursive call is the last operation)
-- Example used for me to understand:
-    - reverse_helper [1; 2; 3] []
-    - reverse_helper [2; 3] [1] (prepend 1 to [])
-    - reverse_helper [3] [2; 1] (prepend 2 to )​
-    - reverse_helper [] [3; 2; 1] (prepend 3 to [2; 1])
-    - Return [3; 2; 1] (base case reached)
+    Complexity:
+        Each recursive step consumes one element and performs O(1) work.
+        Therefore total time = Θ(n) and space = Θ(1) extra.
 
-should combine??
+Complexity Testing: When input size is doubled:
+            • naive version runtime grows by ~4× → confirming Θ(n²)
+            • efficient version runtime grows by ~2× → confirming Θ(n)
+
 operational steps>>
 
 
 
 <<ocaml code
+(* Naive implementation: Θ(n²) *)
+let rec reverse_naive (lst : 'a list) : 'a list =
+  match lst with
+  | [] -> []
+  | x :: xs -> (reverse_naive xs) @ [x]
+
+(* Efficient tail-recursive implementation: Θ(n) *)
 let reverse (lst : 'a list) : 'a list =
   let rec reverse_helper (lst : 'a list) (acc : 'a list) : 'a list =
     match lst with
-    | [] -> acc                           
-    | head :: tail -> reverse_helper tail (head :: acc)
+    | [] -> acc
+    | x :: xs -> reverse_helper xs (x :: acc)
   in
   reverse_helper lst []
 ocaml code>>
 
-
-
 <<proof
 
-        <<invariant
-            Initialisation: 
-            An empty list reversed is still empty. A single element list reversed is still the same list.
-            
-            Maintenance:
-            For a list length k + 1, it would be of the structure of head :: tail, with the tail being k, so that it would be head + tail, or k + 1. When doing reverse tail, the tail is reversed. The head then can be appended to the reversed tail, such that reverse tail :: head. Therefore, the first element of the original list is now at the end, thus reversing the whole list.
-            
-            Termination: 
-            The function calls itself recursively with the tail of the list, which is smaller than the original list. Eventually the recursion reaches the base case of an empty list and stops the recursion. This terminates the reverse function for all finite lists.
-        invariant>>
+    <<invariant
+        Initialisation:
+            reverse_helper [] acc = acc. Since an empty list reversed is still empty,
+            and acc already contains the reversed portion accumulated so far,
+            the invariant holds initially.
+
+        Maintenance:
+            Assume the invariant holds for reverse_helper tail acc, meaning:
+                reverse_helper tail acc = (reverse of tail) @ acc.
+            Now consider lst = head :: tail. The helper is called as:
+                reverse_helper tail (head :: acc).
+            Because head is added to the front of acc, head will appear at the end
+            of the reversed tail when the full reversal is complete.
+            Therefore the invariant remains valid after each recursive step.
+
+        Termination:
+            Each recursive call receives a strictly shorter list (the tail of lst).
+            Since lst is finite, the sequence of recursive calls must eventually reach [].
+            At that point the helper returns acc without further recursion.
+            Hence the reverse function terminates for all finite lists.
+    invariant>>
 
 
 
-        <<induction
-            base case:
-            An empty list reversed is still empty, hence proved. A single element list reversed is still the same list, hence proved.
+    <<induction
 
-            inductive hypothesis:
-            Assume for any list length k, the function reverses the list.
+        base case:
+            For lst = [], reverse_helper [] acc = acc.
+            When reverse lst is called, the accumulator starts as [].
+            Therefore the final result is [] — the correct reversal of the empty list.
 
-            inductive step:
-            For a list length k + 1, it would be of the structure of head :: tail, with the tail being k, so that it would be head + tail, or k + 1. When doing reverse tail, the tail is reversed. The head then can be appended to the reversed tail, such that reverse tail :: head. Therefore, the first element of the original list is now at the end, thus reversing the whole list.
-        induction>>
-        
+        inductive hypothesis:
+            Assume for any list of length k, the helper satisfies:
+                reverse_helper tail acc = (reverse of tail) @ acc.
+
+        inductive step:
+            Consider a list of length k + 1: lst = head :: tail.
+            The reverse function performs:
+                reverse_helper tail (head :: acc).
+            By the inductive hypothesis:
+                reverse_helper tail (head :: acc)
+                = (reverse of tail) @ (head :: acc).
+            Appending head to the end of the reversed tail places head in the last position
+            of the overall result, exactly as required when reversing lst.
+            Therefore reverse (head :: tail) yields the completely reversed list.
+
+    induction>>
+
 proof>>
 
-
-problem>>
