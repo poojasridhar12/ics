@@ -1,23 +1,40 @@
 
-type literal = int * bool        (* (var, is_negated) *)
-type clause = literal list
-type formula = clause list
 
-type state = {
-  mutable value      : bool option array;      
-  mutable antecedent : clause option array;   
-  mutable dl         : int array;             
+(** Type definitions *)
+type literal = int * bool
+type clause = literal list
+
+(** Watch structure: each clause tracks 2 watched literal indices *)
+type watched_clause = {
+  lits: clause;
+  mutable watch1: int;  (* index into lits *)
+  mutable watch2: int;  (* index into lits *)
 }
 
-(** Create initial state for num_vars variables *)
-let make_state (num_vars : int) : state =
-  {
-    value      = Array.make (num_vars + 1) None;
-    antecedent = Array.make (num_vars + 1) None;
-    dl         = Array.make (num_vars + 1) 0;
-  }
+type state = {
+  mutable value      : bool option array;
+  mutable antecedent : int option array;  (* clause index instead of clause *)
+  mutable dl         : int array;
+  mutable vsids_activity : float array;   (* VSIDS scores *)
+  mutable phase_saved : bool array;       (* saved phases *)
+}
 
-(** Convert DIMACS integers to internal (var, negated) representation *)
+type solver_state = {
+  clauses: watched_clause array;
+  watches: (int, int list ref) Hashtbl.t;  (* literal -> clause indices *)
+  state: state;
+  mutable num_conflicts: int;
+  mutable vsids_inc: float;
+  mutable vsids_decay: float;
+}
+
+(** Constants *)
+let vsids_decay_factor = 0.95
+let vsids_initial_inc = 1.0
+let restart_base = 100
+let restart_inc = 1.5
+
+(** Convert DIMACS to internal format *)
 let convert_clause (lit_list : int list) : clause =
   List.map (fun lit ->
     let var = abs lit in
@@ -25,95 +42,178 @@ let convert_clause (lit_list : int list) : clause =
     (var, neg)
   ) lit_list
 
-(** Get all variables from formula *)
-let get_variables (formula : formula) : int list =
-  let vars = ref [] in
-  List.iter (fun clause ->
-    List.iter (fun (var, _) ->
-      if not (List.mem var !vars) then
-        vars := var :: !vars
-    ) clause
-  ) formula;
-  List.sort compare !vars
+(** Create initial state *)
+let make_state (num_vars : int) : state =
+  {
+    value      = Array.make (num_vars + 1) None;
+    antecedent = Array.make (num_vars + 1) None;
+    dl         = Array.make (num_vars + 1) 0;
+    vsids_activity = Array.make (num_vars + 1) 0.0;
+    phase_saved = Array.make (num_vars + 1) true;
+  }
 
-(** Evaluate a literal under current state
-    Returns Some(bool) if assigned, None if unassigned *)
+(** Initialize watched literals for a clause *)
+let init_watched_clause (lits : clause) : watched_clause =
+  let len = List.length lits in
+  {
+    lits = lits;
+    watch1 = 0;
+    watch2 = if len > 1 then 1 else 0;
+  }
+
+(** Convert literal to watch key *)
+let lit_to_key (var : int) (neg : bool) : int =
+  if neg then -var else var
+
+(** Evaluate literal *)
 let eval_literal (var : int) (neg : bool) (state : state) : bool option =
   match state.value.(var) with
   | Some v -> Some (if neg then not v else v)
   | None -> None
 
-(** Determine status of a clause: 'S' (satisfied), 'U' (unit), 'C' (conflict), 'R' (unresolved) *)
-let clause_status (clause : clause) (state : state) : char =
-  let results = List.map (fun (var, neg) ->
-    eval_literal var neg state
-  ) clause in
+(** Get literal at index in watched clause *)
+let get_lit (wc : watched_clause) (idx : int) : literal =
+  List.nth wc.lits idx
+
+(** Update VSIDS activity for a variable *)
+let bump_activity (solver : solver_state) (var : int) : unit =
+  solver.state.vsids_activity.(var) <- 
+    solver.state.vsids_activity.(var) +. solver.vsids_inc;
   
-  if List.mem (Some true) results then
-    'S'  (* satisfied *)
-  else if List.for_all (fun r -> r = Some false) results then
-    'C'  (* conflict *)
-  else if List.filter (fun r -> r = None) results |> List.length = 1 then
-    'U'  (* unit *)
-  else
-    'R'  (* unresolved *)
+  (* Rescale if needed *)
+  if solver.state.vsids_activity.(var) > 1e100 then (
+    for i = 1 to Array.length solver.state.vsids_activity - 1 do
+      solver.state.vsids_activity.(i) <- 
+        solver.state.vsids_activity.(i) *. 1e-100
+    done;
+    solver.vsids_inc <- solver.vsids_inc *. 1e-100
+  )
 
-(** Find unassigned literal in unit clause *)
-let find_unit_literal (clause : clause) (state : state) : literal option =
-  List.find_opt (fun (var, _) ->
-    state.value.(var) = None
-  ) clause
+(** Decay VSIDS scores *)
+let decay_activities (solver : solver_state) : unit =
+  solver.vsids_inc <- solver.vsids_inc /. solver.vsids_decay
 
-(** Unit propagation: repeatedly assign unit clause literals *)
-let unit_propagation (formula : formula) (state : state) (current_dl : int)
-    : clause option =
-  let rec loop () =
-    let found_unit = ref false in
-    let conflict = ref None in
+(** Two-watched literal unit propagation *)
+let unit_propagation (solver : solver_state) (current_dl : int) 
+    : int option =
+  let queue = Queue.create () in
+  let state = solver.state in
+  
+  (* Initialize queue with all assigned literals *)
+  Array.iteri (fun var opt_val ->
+    if var > 0 then
+      match opt_val with
+      | Some v -> 
+          let key = lit_to_key var (not v) in
+          Queue.add key queue
+      | None -> ()
+  ) state.value;
+  
+  let conflict = ref None in
+  
+  while not (Queue.is_empty queue) && !conflict = None do
+    let falsified_lit = Queue.take queue in
+    let var = abs falsified_lit in
+    let neg = falsified_lit < 0 in
     
-    List.iter (fun clause ->
-      match clause_status clause state with
-      | 'S' | 'R' -> ()
-      | 'C' -> conflict := Some clause
-      | 'U' ->
-          (match find_unit_literal clause state with
-           | Some (var, neg) ->
-               let value = not neg in
-               state.value.(var) <- Some value;
-               state.antecedent.(var) <- Some clause;
-               state.dl.(var) <- current_dl;
-               found_unit := true
-           | None -> ())
-      | _ -> ()
-    ) formula;
+    (* Get clauses watching this literal *)
+    let watching = 
+      match Hashtbl.find_opt solver.watches falsified_lit with
+      | Some r -> !r
+      | None -> []
+    in
     
-    match !conflict with
-    | Some c -> c
-    | None -> if !found_unit then loop () else (
-        (* No conflict, check if all satisfied *)
-        List.find_map (fun clause ->
-          match clause_status clause state with
-          | 'C' -> Some clause
-          | _ -> None
-        ) formula
-        |> (function Some c -> c | None -> raise Not_found)
+    let still_watching = ref [] in
+    
+    List.iter (fun clause_idx ->
+      let wc = solver.clauses.(clause_idx) in
+      let watch_idx = 
+        if get_lit wc wc.watch1 = (var, neg) then wc.watch1
+        else wc.watch2
+      in
+      
+      (* Try to find new watch *)
+      let found_new = ref false in
+      let i = ref 0 in
+      let len = List.length wc.lits in
+      
+      while !i < len && not !found_new do
+        if !i <> wc.watch1 && !i <> wc.watch2 then (
+          let (v, n) = get_lit wc !i in
+          match eval_literal v n state with
+          | Some true -> found_new := true  (* satisfied *)
+          | None -> found_new := true       (* unassigned *)
+          | Some false -> ()                (* falsified, keep looking *)
+        );
+        if not !found_new then incr i
+      done;
+      
+      if !found_new then (
+        (* Update watch *)
+        if watch_idx = wc.watch1 then wc.watch1 <- !i
+        else wc.watch2 <- !i;
+        
+        let (new_var, new_neg) = get_lit wc !i in
+        let new_key = lit_to_key new_var new_neg in
+        let new_list = 
+          match Hashtbl.find_opt solver.watches new_key with
+          | Some r -> r
+          | None -> 
+              let r = ref [] in
+              Hashtbl.add solver.watches new_key r;
+              r
+        in
+        new_list := clause_idx :: !new_list
+      ) else (
+        (* Clause is unit or conflict *)
+        still_watching := clause_idx :: !still_watching;
+        
+        let other_idx = if watch_idx = wc.watch1 then wc.watch2 else wc.watch1 in
+        let (other_var, other_neg) = get_lit wc other_idx in
+        
+        match eval_literal other_var other_neg state with
+        | Some false -> conflict := Some clause_idx  (* conflict *)
+        | None ->  (* unit clause *)
+            let value = not other_neg in
+            state.value.(other_var) <- Some value;
+            state.antecedent.(other_var) <- Some clause_idx;
+            state.dl.(other_var) <- current_dl;
+            state.phase_saved.(other_var) <- value;
+            
+            let new_key = lit_to_key other_var (not value) in
+            Queue.add new_key queue
+        | Some true -> ()  (* already satisfied *)
       )
-  in
-  try
-    Some (loop ())
-  with Not_found -> None
+    ) watching;
+    
+    (* Update watch list *)
+    (match Hashtbl.find_opt solver.watches falsified_lit with
+     | Some r -> r := !still_watching
+     | None -> ())
+  done;
+  
+  !conflict
 
-(** Pick first unassigned variable with value True *)
-let pick_branching_variable (variables : int list) (state : state)
-    : (int * bool) option =
-  let unassigned = List.find_opt (fun var ->
-    state.value.(var) = None
-  ) variables in
-  match unassigned with
+(** VSIDS variable selection with phase saving *)
+let pick_branching_variable (solver : solver_state) : (int * bool) option =
+  let state = solver.state in
+  let best_var = ref None in
+  let best_score = ref neg_infinity in
+  
+  for var = 1 to Array.length state.value - 1 do
+    if state.value.(var) = None then (
+      if state.vsids_activity.(var) > !best_score then (
+        best_score := state.vsids_activity.(var);
+        best_var := Some var
+      )
+    )
+  done;
+  
+  match !best_var with
   | None -> None
-  | Some var -> Some (var, true)
+  | Some var -> Some (var, state.phase_saved.(var))
 
-(** Backtrack: remove assignments with decision level > b *)
+(** Backtrack to decision level *)
 let backtrack (state : state) (b : int) : unit =
   for v = 1 to Array.length state.value - 1 do
     if state.dl.(v) > b then (
@@ -123,39 +223,39 @@ let backtrack (state : state) (b : int) : unit =
     )
   done
 
-(** Resolve two clauses on variable x
-    Removes x from both clauses and combines remaining literals *)
+(** Resolve clauses *)
 let resolve (clause_a : clause) (clause_b : clause) (x : int) : clause =
   let filtered_a = List.filter (fun (var, _) -> var <> x) clause_a in
   let filtered_b = List.filter (fun (var, _) -> var <> x) clause_b in
   let combined = filtered_a @ filtered_b in
   
-  (* Remove duplicates *)
   let seen = Hashtbl.create (List.length combined) in
   List.filter (fun lit ->
     if Hashtbl.mem seen lit then false
     else (Hashtbl.add seen lit (); true)
   ) combined
 
-(** Conflict analysis using First UIP strategy
-    Returns (backtrack_level, learned_clause) *)
-let conflict_analysis (conflict_clause : clause) (state : state) (current_dl : int)
-    : int * clause =
+(** First UIP conflict analysis *)
+let conflict_analysis (solver : solver_state) (conflict_idx : int) 
+    (current_dl : int) : int * clause =
+  let state = solver.state in
+  
   if current_dl = 0 then
-    (-1, conflict_clause)
+    (-1, solver.clauses.(conflict_idx).lits)
   else
-    let current = ref conflict_clause in
+    let current = ref solver.clauses.(conflict_idx).lits in
     
     let rec analyze () =
-      (* Count literals at current decision level *)
       let current_level_lits = List.filter (fun (var, _) ->
         state.dl.(var) = current_dl
       ) !current in
       
+      (* Bump VSIDS for variables in conflict *)
+      List.iter (fun (var, _) -> bump_activity solver var) !current;
+      
       if List.length current_level_lits <= 1 then
         !current
       else
-        (* Find an implied literal (one with antecedent) *)
         let implied = List.find_opt (fun (var, _) ->
           state.antecedent.(var) <> None
         ) current_level_lits in
@@ -164,7 +264,8 @@ let conflict_analysis (conflict_clause : clause) (state : state) (current_dl : i
         | None -> !current
         | Some (var, _) ->
             (match state.antecedent.(var) with
-             | Some antecedent ->
+             | Some ant_idx ->
+                 let antecedent = solver.clauses.(ant_idx).lits in
                  current := resolve !current antecedent var;
                  analyze ()
              | None -> !current)
@@ -172,14 +273,13 @@ let conflict_analysis (conflict_clause : clause) (state : state) (current_dl : i
     
     let learned = analyze () in
     
-    (* Compute backtrack level: second-highest decision level *)
     let decision_levels = ref [] in
     List.iter (fun (var, _) ->
-      if state.dl.(var) > 0 then
+      if state.dl.(var) > 0 && not (List.mem state.dl.(var) !decision_levels) then
         decision_levels := state.dl.(var) :: !decision_levels
     ) learned;
     
-    let decision_levels = List.sort_uniq compare !decision_levels in
+    let decision_levels = List.sort compare !decision_levels in
     let backtrack_level =
       match List.rev decision_levels with
       | [] -> 0
@@ -190,60 +290,117 @@ let conflict_analysis (conflict_clause : clause) (state : state) (current_dl : i
     
     (backtrack_level, learned)
 
-(** Main CDCL solver *)
-let solve_sat (num_vars : int) (raw_clauses : int list list) : bool option array option =
-  (* Convert to internal format *)
-  let formula = List.map convert_clause raw_clauses in
-  let variables = get_variables formula in
+(** Main solver with restarts *)
+let solve_sat (num_vars : int) (raw_clauses : int list list) 
+    : bool option array option =
+  let clauses = List.map convert_clause raw_clauses in
+  let watched_clauses = Array.of_list (List.map init_watched_clause clauses) in
   
-  (* Initialize state *)
   let state = make_state num_vars in
-  let current_dl = ref 0 in
-  let formula_ref = ref formula in
+  let watches = Hashtbl.create (num_vars * 4) in
   
-  (* Initial unit propagation *)
-  (match unit_propagation !formula_ref state !current_dl with
-   | Some _ -> None  (* UNSAT from start *)
-   | None -> ());
-  
-  (* Main CDCL loop *)
-  let rec solve () =
-    (* Check if all variables assigned *)
-    let assigned_count = ref 0 in
-    for v = 1 to num_vars do
-      if state.value.(v) <> None then incr assigned_count
-    done;
+  (* Initialize watch lists *)
+  Array.iteri (fun idx wc ->
+    let (v1, n1) = get_lit wc wc.watch1 in
+    let (v2, n2) = get_lit wc wc.watch2 in
     
-    if !assigned_count = num_vars then
-      (* SAT: all variables assigned *)
-      Some state.value
-    else
-      match pick_branching_variable variables state with
-      | None -> Some state.value
-      | Some (var, value) ->
-          incr current_dl;
-          state.value.(var) <- Some value;
-          state.antecedent.(var) <- None;
-          state.dl.(var) <- !current_dl;
-          
-          let rec propagate_and_analyze () =
-            match unit_propagation !formula_ref state !current_dl with
-            | None -> solve ()
-            | Some conflict ->
-                let (backtrack_level, learned) =
-                  conflict_analysis conflict state !current_dl in
-                
-                if backtrack_level < 0 then
-                  None  (* UNSAT *)
-                else (
-                  formula_ref := !formula_ref @ [learned];
-                  backtrack state backtrack_level;
-                  current_dl := backtrack_level;
-                  propagate_and_analyze ()
-                )
-          in
-          
-          propagate_and_analyze ()
-  in
+    let key1 = lit_to_key v1 n1 in
+    let key2 = lit_to_key v2 n2 in
+    
+    let list1 = match Hashtbl.find_opt watches key1 with
+      | Some r -> r
+      | None -> let r = ref [] in Hashtbl.add watches key1 r; r
+    in
+    list1 := idx :: !list1;
+    
+    if key1 <> key2 then (
+      let list2 = match Hashtbl.find_opt watches key2 with
+        | Some r -> r
+        | None -> let r = ref [] in Hashtbl.add watches key2 r; r
+      in
+      list2 := idx :: !list2
+    )
+  ) watched_clauses;
   
-  solve ()
+  let solver = {
+    clauses = watched_clauses;
+    watches = watches;
+    state = state;
+    num_conflicts = 0;
+    vsids_inc = vsids_initial_inc;
+    vsids_decay = vsids_decay_factor;
+  } in
+  
+  let current_dl = ref 0 in
+  let restart_threshold = ref restart_base in
+  
+  (* Initial propagation *)
+  (match unit_propagation solver !current_dl with
+   | Some _ -> None
+   | None ->
+       let rec solve () =
+         (* Check restart *)
+         if solver.num_conflicts >= !restart_threshold then (
+           backtrack state 0;
+           current_dl := 0;
+           restart_threshold := int_of_float 
+             (float !restart_threshold *. restart_inc)
+         );
+         
+         (* Check if all assigned *)
+         let all_assigned = ref true in
+         for v = 1 to num_vars do
+           if state.value.(v) = None then all_assigned := false
+         done;
+         
+         if !all_assigned then Some state.value
+         else
+           match pick_branching_variable solver with
+           | None -> Some state.value
+           | Some (var, value) ->
+               incr current_dl;
+               state.value.(var) <- Some value;
+               state.antecedent.(var) <- None;
+               state.dl.(var) <- !current_dl;
+               
+               let rec propagate_and_learn () =
+                 match unit_propagation solver !current_dl with
+                 | None -> solve ()
+                 | Some conflict_idx ->
+                     solver.num_conflicts <- solver.num_conflicts + 1;
+                     decay_activities solver;
+                     
+                     let (backtrack_level, learned) =
+                       conflict_analysis solver conflict_idx !current_dl in
+                     
+                     if backtrack_level < 0 then None
+                     else (
+                       (* Add learned clause *)
+                       let new_wc = init_watched_clause learned in
+                       let new_idx = Array.length solver.clauses in
+                       solver.clauses <- Array.append solver.clauses [|new_wc|];
+                       
+                       (* Update watches for new clause *)
+                       let (v1, n1) = get_lit new_wc new_wc.watch1 in
+                       let key1 = lit_to_key v1 n1 in
+                       (match Hashtbl.find_opt solver.watches key1 with
+                        | Some r -> r := new_idx :: !r
+                        | None -> Hashtbl.add solver.watches key1 (ref [new_idx]));
+                       
+                       if new_wc.watch1 <> new_wc.watch2 then (
+                         let (v2, n2) = get_lit new_wc new_wc.watch2 in
+                         let key2 = lit_to_key v2 n2 in
+                         (match Hashtbl.find_opt solver.watches key2 with
+                          | Some r -> r := new_idx :: !r
+                          | None -> Hashtbl.add solver.watches key2 (ref [new_idx]))
+                       );
+                       
+                       backtrack state backtrack_level;
+                       current_dl := backtrack_level;
+                       propagate_and_learn ()
+                     )
+               in
+               propagate_and_learn ()
+       in
+       solve ()
+  )
