@@ -1,14 +1,12 @@
-(* sat_solver.ml - Core CDCL SAT Solver Implementation *)
 
-(** Type definitions *)
 type literal = int * bool        (* (var, is_negated) *)
 type clause = literal list
 type formula = clause list
 
 type state = {
-  mutable value      : bool option array;      (* value.(v) = Some true/false or None *)
-  mutable antecedent : clause option array;    (* antecedent.(v) = Some clause if implied *)
-  mutable dl         : int array;              (* dl.(v) = decision level of assignment *)
+  mutable value      : bool option array;      
+  mutable antecedent : clause option array;   
+  mutable dl         : int array;             
 }
 
 (** Create initial state for num_vars variables *)
