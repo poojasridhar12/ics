@@ -2,125 +2,126 @@
 assignment: Assignment 1
 student: Pooja Sridhar
 date: 25 October 2025
-collaborators: Use of AI for editing the format
+collaborators: Use of AI for formatting only
 problem: Problem 1: Division is Repeated Subtraction
 header>>
 
 <<problem 1: Problem 1: Division is Repeated Subtraction
 
-
 <<blueprint
-        <<functional-correctness
-              requires: 
-* a : nat ∧ b : nat 
-* No other preconditions on `a`. `b` may be `Zero`
+    <<functional-correctness
 
+        requires:
+        * a : nat and b : nat
+        * b is allowed to be Zero, but in that case division is undefined
 
-              ensures: 
-* The function `divmod (a, b)` returns a value of type `(nat * nat) option` satisfying:
-  * `divmod a b = None` ⇔ `b = Zero`.
-  * If `b ≠ Zero` then `divmod a b = Some (q, r)` such that:
-    1. `q : nat` and `r : nat`.
-    2. `a = b * q + r`. (Here `*` and `+` are the usual operations on `nat` defined by repeated addition.)
-    3. `r < b` (strict inequality on `nat`).
-* The algorithm always terminates.
-        functional-correctness>>
+        ensures:
+        * divmod (a, b) returns a value of type (nat * nat) option
+        * divmod a b = None  exactly when  b = Zero
+        * if b ≠ Zero then divmod a b = Some (q, r) with:
+            - q : nat and r : nat
+            - a = b * q + r              (with * and + as usual nat operations)
+            - r < b
+
+        * the procedure always terminates (since remainder strictly decreases)
+    functional-correctness>>
 blueprint>>
 
-
-
 <<operational steps
-1. If `b = Zero`, return `None` (division by zero is undefined).
-2. Otherwise (so `b = Succ _`):
 
-   * Start with quotient `q = Zero` and remainder `r = a`.
-   * Repeatedly check: if `r < b` then stop and return `(q, r)`.
-   * If `r >= b`, compute `r' = r - b` (syntactic subtraction on `nat`), increment `q` to `Succ q`, set `r := r'` and repeat.
-3. Because each subtraction decreases the remainder `r` in the natural-number ordering and `r` is bounded below by `Zero`, this process must terminate.
-4. Return `Some (q, r)` with `r < b` when finished.
+1. If b = Zero, return None immediately.
 
-Edge cases:
+2. Otherwise initialise:
+      q = Zero     
+      r = a         
 
-* `a = Zero` and `b ≠ Zero`: algorithm returns `Some (Zero, Zero)`.
-* `a < b`: returns `Some (Zero, a)`.
-=operational steps>>
+3. As long as r ≥ b, subtract b from r and increase q by one:
+      r := sub r b
+      q := Succ q
 
+4. When r < b, stop and return Some (q, r).
 
+Edge cases
 
+* If a = Zero and b ≠ Zero, we instantly finish with (Zero, Zero).
+* If a < b, we never enter the subtraction loop and result is (Zero, a).
+* Each loop step strictly reduces r, so termination is guaranteed.
+operational steps>>
 
 <<ocaml code
 type nat = Zero | Succ of nat
 
-let rec lt (a : nat) (b : nat) : bool =
-  match (a, b) with
-  | (Zero, Zero) -> false
-  | (Zero, Succ _) -> true
-  | (Succ _ , Zero) -> false
-  | (Succ a', Succ b') -> lt a' b'
+let rec lt a b =
+  match a, b with
+  | Zero, Zero -> false
+  | Zero, Succ _ -> true
+  | Succ _, Zero -> false
+  | Succ a', Succ b' -> lt a' b'
 
+let rec sub a b =
+  match a, b with
+  | Zero, Zero -> Zero
+  | _, Zero -> a
+  | Succ a', Succ b' -> sub a' b'
 
-let rec sub (a : nat) (b : nat) : nat =
-  match (a, b) with
-  | (Zero, Zero) -> Zero
-  | (_, Zero) -> a
-  | (Succ a', Succ b') -> sub a' b'
-
-
-let rec divmod_aux (q : nat) (r : nat) (b : nat) : (nat * nat) =
+let rec divmod_aux q r b =
   if lt r b then (q, r)
   else
     let r' = sub r b in
     divmod_aux (Succ q) r' b
 
-
-let divmod (a : nat) (b : nat) : (nat * nat) option =
+let divmod a b =
   match b with
   | Zero -> None
   | _ -> Some (divmod_aux Zero a b)
 ocaml code>>
 
-
-
 <<proof
 
-        <<invariant
-            Initialisation: At each call `divmod_aux q r b` (with fixed `b ≠ Zero`) the following invariant holds: `original_a = b * q + r`, where `original_a` is the initial `a` passed to `divmod` (we view `q` and `r` as the current quotient and remainder accumulated so far).
+    The recursive helper divmod_aux carries the ongoing quotient q and remainder r.
+    For a fixed non-zero b, we use the following invariant:
 
-            
-            Maintenance:
+    <<invariant
+        At every call divmod_aux q r b, we maintain:
+            original_a = b * q + r
+        where original_a is the initial input to divmod.
+    invariant>>
 
-* Suppose `divmod_aux q r b` is called and `lt r b` is `false` (so `r >= b`).
-* Then `r' = sub r b` is mathematically `r - b`.
-* After the recursive call `divmod_aux (Succ q) r' b`, the new pair `(q', r') = (Succ q, r - b)` satisfies:
+    • Initialization.
+      At the start we call divmod_aux Zero a b, so the invariant holds because
+         b * Zero + a = a.
 
-  * `b * (Succ q) + r' = b * q + b + (r - b) = b * q + r`, so INV is preserved.
+    • Maintenance.
+      If r ≥ b (so lt r b = false), the algorithm computes r' = r − b
+      and makes the next call with (Succ q, r').
+      Algebraically:
+         b * (Succ q) + r' = b * q + b + (r − b) = b * q + r
+      so the invariant is preserved.
 
-            For input a >= b, given that the recursive call on a - b returns qk, rk 
-            satisfying a - b = b * qk + rk (where rk < b), the algorithm returns 
-            q = qk + 1 and r = rk. This maintains the properties:
-              a = b + (a - b)
-                = b + b * qk + rk
-                = b * (qk + 1) + rk
-                = b * q + r
-              r = rk < b still holds
-            
-            Termination: At each recursive step, the algorithm subtracts b from the current remainder r, producing a strictly smaller value r'. Since b ≠ Zero in all recursive paths, the remainder decreases every time and cannot decrease indefinitely over natural numbers. Therefore, the recursion must eventually reach the base case where r < b, at which point the algorithm stops and returns. Hence, the function always terminates.
-        invariant>>
+    • Termination:
+      Each recursive call decreases r by b. Since we never subtract unless b ≠ Zero,
+      and r is a natural number, eventually r < b and recursion ends.
 
+    Stop (i.e., r < b), the invariant gives:
+        original_a = b * q + r
+      and the stopping condition already provides r < b.
+      Therefore (q, r) satisfies the division specification.
 
+    <<induction
+        Base case: a = Zero.
+          Since b ≠ Zero, lt Zero b = true immediately, so result is (Zero, Zero).
+          This satisfies: 0 = b * 0 + 0 and 0 < b.
 
-        <<induction
-            base case: `a = Zero`: then since `b ≠ Zero`, `lt Zero b = true`, so `divmod_aux Zero Zero b` returns `(Zero, Zero)`. So `0 = b*0 + 0` and `0 < b`.
+        Inductive step:
+          Assume the correctness holds for all a' < a.
+          If a < b, we instantly return (0, a), giving a = b*0 + a and a < b.
+          If a ≥ b, let a' = a − b. Then a' < a. By IH:
+              a' = b * q + r  and  r < b.
+          The algorithm returns (Succ q, r), and:
+              a = b + a' = b + (b * q + r) = b*(q + 1) + r
+          with r < b, completing the inductive step.
+    induction>>
 
-            inductive hypothesis:
-            For all k < a, the division function returns a quotient qk and remainder 
-            rk such that: 
-              (i) k = b × qk + rk 
-              (ii) rk < b
-
-            inductive step: * **Inductive step**: Suppose for all `a'` smaller than `a` the property holds. If `lt a b = true`, we return `(Zero, a)` and `a < b` holds. Otherwise, `a >= b`; let `a' = sub a b`. Note `a' < a`. By induction hypothesis, `divmod a' b = Some (q, r)` with `a' = b*q + r` and `r < b`. Then `divmod a b` returns `Some (Succ q, r)` and a = b + a' = b + (b*q + r) = b*(q+1) + r with `r < b`. So property holds.
-        induction>>
-        
 proof>>
 
 problem>>
