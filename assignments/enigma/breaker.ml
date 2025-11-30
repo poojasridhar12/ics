@@ -2,319 +2,371 @@
 
 Here, I take the paintext and the cipher text and map them, position 0, H is I. Then I taje each rotor position combination and for each position, try to derive plugboard settings. If contradictions need to be found, then they need to be elimanted. *)
 
-(* SMART ENIGMA BREAKER - Using Turing's Bombe Logic *)
-(* Usage: ocaml breaker.ml <plaintext> <ciphertext> *)
+(* Configuration *)
+let mode = "break"  (* "encrypt", "decrypt", or "break" *)
+let text = "HELLO WORLD"
+let break_crib = "HELLO WLD"
+let break_cipher = "KQXDN YPJQ"
+let rotors = [1;2;3]
+let positions = [0;1;2]
+let ring_settings = [0;0;0]
+let plugboard = [('A','Z'); ('B','D')]
 
-(* ============================================
-   ENIGMA LOGIC
-   ============================================ *)
+type config = {
+  rotors: int list;
+  positions: int list;
+  ring_settings: int list;
+  plugboard: (char*char) list;
+}
 
-let rotor_wiring = [
+let base_cfg = { rotors; positions; ring_settings; plugboard }
+
+(* Enigma *)
+
+let rotor_wiring = [|
   "EKMFLGDQVZNTOWYHXUSPAIBRCJ";
   "AJDKSIRUXBLHWTMCQGZNPYFVOE";
-  "BDFHJLCPRTXVZNYEIWGAKMUSQO";
-]
+  "BDFHJLCPRTXVZNYEIWGAKMUSQO"
+|]
 
 let reflector = "YRUHQSLDPXNGOKMIEBFZCWVJAT"
-let notches = ['Q'; 'E'; 'V']
+let notches = [|16; 4; 21|]  (* Q, E, V for rotors I, II, III *)
 
-let apply_plugboard plugboard c =
-  let rec find_swap = function
-    | [] -> c
-    | (a, b) :: rest -> if c = a then b else if c = b then a else find_swap rest
-  in find_swap plugboard
+(* Plugboard mapping: returns swapped char or original *)
+let apply_plugboard_map pb c =
+  try List.assoc c pb with Not_found ->
+  try List.assoc c (List.map (fun (a,b)->(b,a)) pb) with Not_found -> c
 
-let rotor_forward rotor_num position ring_setting input =
-  let wiring = List.nth rotor_wiring (rotor_num - 1) in
-  let adjusted_pos = (input + position - ring_setting + 26) mod 26 in
-  let output_char = String.get wiring adjusted_pos in
-  let output = Char.code output_char - Char.code 'A' in
-  (output - position + ring_setting + 26) mod 26
+(* Forward rotor pass *)
+let rotor_fwd rotor pos ring input =
+  let wiring = rotor_wiring.(rotor-1) in
+  let idx = (input + pos - ring + 26) mod 26 in
+  (Char.code wiring.[idx] - Char.code 'A' - pos + ring + 26) mod 26
 
-let rotor_backward rotor_num position ring_setting input =
-  let wiring = List.nth rotor_wiring (rotor_num - 1) in
-  let adjusted_pos = (input + position - ring_setting + 26) mod 26 in
-  let output_char = Char.chr (adjusted_pos + Char.code 'A') in
-  let output = String.index wiring output_char in
-  (output - position + ring_setting + 26) mod 26
+(* Backward rotor pass *)
+let rotor_bwd rotor pos ring input =
+  let wiring = rotor_wiring.(rotor-1) in
+  let ch = Char.chr ((input + pos - ring + 26) mod 26 + Char.code 'A') in
+  let idx = String.index wiring ch in
+  (idx - pos + ring + 26) mod 26
 
-let apply_reflector input =
-  let output_char = String.get reflector input in
-  Char.code output_char - Char.code 'A'
+(* Reflector *)
+let reflect x = Char.code reflector.[x] - Char.code 'A'
 
-let advance_rotors rotors positions =
-  let rec advance rotors positions should_advance_next =
-    match rotors, positions with
-    | [r], [p] -> [r], [(p + 1) mod 26]
-    | r :: rs, p :: ps ->
-        let notch_pos = Char.code (List.nth notches (r - 1)) - Char.code 'A' in
-        let should_advance = should_advance_next || (p = notch_pos) in
-        let new_rs, new_ps = advance rs ps should_advance in
-        let new_p = if should_advance_next || should_advance then (p + 1) mod 26 else p in
-        r :: new_rs, new_p :: new_ps
-    | _ -> rotors, positions
-  in advance rotors positions false
-
-let encrypt_char rotors positions ring_settings plugboard c =
-  if not (Char.uppercase_ascii c >= 'A' && Char.uppercase_ascii c <= 'Z') then c
-  else
-    let c = Char.uppercase_ascii c in
-    let c = apply_plugboard plugboard c in
-    let input = Char.code c - Char.code 'A' in
-    let result = List.fold_left2 (fun acc rotor pos ->
-      let ring = List.nth ring_settings (rotor - 1) in
-      rotor_forward rotor pos ring acc) input rotors positions in
-    let result = apply_reflector result in
-    let result = List.fold_left2 (fun acc rotor pos ->
-      let ring = List.nth ring_settings (rotor - 1) in
-      rotor_backward rotor pos ring acc) result (List.rev rotors) (List.rev positions) in
-    let output_char = Char.chr (result + Char.code 'A') in
-    apply_plugboard plugboard output_char
-
-let encrypt_string rotors start_positions ring_settings plugboard text =
-  let rec encrypt_chars rotors positions acc = function
-    | [] -> String.concat "" (List.rev acc)
-    | c :: cs ->
-        let new_rotors, new_positions = advance_rotors rotors positions in
-        let encrypted = encrypt_char new_rotors new_positions ring_settings plugboard c in
-        encrypt_chars new_rotors new_positions (String.make 1 encrypted :: acc) cs
+(* Advance rotors with proper notch behavior *)
+let advance_rotor_positions cfg_rotors positions =
+  let rec step pos_list rotor_list carry =
+    match pos_list, rotor_list with
+    | [], [] -> []
+    | hd::tl, r::rtl ->
+        let notch = notches.(r-1) in
+        let next_carry = (hd = notch) in
+        let new_hd = (hd + (if carry then 1 else 0)) mod 26 in
+        new_hd :: step tl rtl next_carry
+    | _ -> pos_list
   in
-  let chars = List.init (String.length text) (String.get text) in
-  encrypt_chars rotors start_positions [] chars
+  List.rev (step (List.rev positions) (List.rev cfg_rotors) true)
 
-(* ============================================
-   TURING'S BOMBE LOGIC - SMART APPROACH
-   ============================================ *)
+(* Encrypt a single character with edge case handling *)
+let encrypt_char cfg pos c =
+  (* Handle non-letter characters - pass through unchanged *)
+  let upper = Char.uppercase_ascii c in
+  if not (upper >= 'A' && upper <= 'Z') then c else
+  let c = apply_plugboard_map cfg.plugboard upper in
+  let input = Char.code c - Char.code 'A' in
+  let fwd = List.fold_left2 (fun acc r p -> rotor_fwd r p (List.nth cfg.ring_settings (r-1)) acc) input cfg.rotors pos in
+  let refl = reflect fwd in
+  let bwd = List.fold_left2 (fun acc r p -> rotor_bwd r p (List.nth cfg.ring_settings (r-1)) acc) refl (List.rev cfg.rotors) (List.rev pos) in
+  apply_plugboard_map cfg.plugboard (Char.chr (bwd + Char.code 'A'))
 
-(* Step 1: Deduce plugboard from plaintext-ciphertext pairs *)
-let deduce_plugboard_constraints known_plain known_cipher =
-  (* If a letter encrypts to itself at position i, we can deduce constraints *)
-  let constraints = ref [] in
-  for i = 0 to String.length known_plain - 1 do
-    let p = known_plain.[i] in
-    let c = known_cipher.[i] in
-    if p <> c then
-      constraints := (p, c) :: !constraints
-  done;
-  !constraints
+(* Encrypt a string with edge case handling *)
+let encrypt_string cfg str =
+  (* Handle empty string *)
+  if String.length str = 0 then "" else
+  let rec aux pos acc chars =
+    match chars with
+    | [] -> String.concat "" (List.rev acc)
+    | ch::tl ->
+        let upper = Char.uppercase_ascii ch in
+        (* Only advance rotors for letters *)
+        if upper >= 'A' && upper <= 'Z' then
+          let new_pos = advance_rotor_positions cfg.rotors pos in
+          let enc = encrypt_char cfg new_pos upper in
+          aux new_pos ((String.make 1 enc)::acc) tl
+        else
+          (* Pass through non-letters unchanged *)
+          aux pos ((String.make 1 ch)::acc) tl
+  in
+  aux cfg.positions [] (List.init (String.length str) (String.get str))
 
-(* Step 2: Try to infer likely plugboard from constraints *)
-let infer_plugboard constraints =
-  (* Count letter pairs *)
-  let pairs = Hashtbl.create 26 in
-  List.iter (fun (a, b) ->
-    let key = if a < b then (a, b) else (b, a) in
-    let count = try Hashtbl.find pairs key with Not_found -> 0 in
-    Hashtbl.replace pairs key (count + 1)
-  ) constraints;
-  
-  (* Get top pairs *)
-  let sorted = Hashtbl.fold (fun k v acc -> (k, v) :: acc) pairs [] in
-  let sorted = List.sort (fun (_, c1) (_, c2) -> compare c2 c1) sorted in
-  
-  (* Return top 2 most likely swaps *)
-  match sorted with
-  | (p1, _) :: (p2, _) :: _ -> [p1; p2]
-  | (p1, _) :: _ -> [p1]
-  | _ -> []
+let decrypt_string = encrypt_string
 
-(* Step 3: FAST rotor search using the crib *)
-let break_enigma_smart known_plain known_cipher =
-  Printf.printf "\n";
-  Printf.printf "╔════════════════════════════════════════════════════════════════╗\n";
-  Printf.printf "║         SMART ENIGMA BREAKER (Turing's Method)                ║\n";
-  Printf.printf "╚════════════════════════════════════════════════════════════════╝\n\n";
-  
-  Printf.printf "Known crib:\n";
-  Printf.printf "  Plaintext:  %s\n" known_plain;
-  Printf.printf "  Ciphertext: %s\n\n" known_cipher;
-  
-  if String.length known_plain <> String.length known_cipher then (
-    Printf.printf "❌ Error: Plaintext and ciphertext must be same length!\n\n";
-    exit 1
-  );
-  
-  (* Analyze the crib *)
-  Printf.printf "Step 1: Analyzing crib for constraints...\n";
-  let constraints = deduce_plugboard_constraints known_plain known_cipher in
-  Printf.printf "  Found %d letter transformations\n\n" (List.length constraints);
-  
-  let rotors = [1; 2; 3] in
-  let ring_settings = [0; 0; 0] in
-  let tested = ref 0 in
-  let matches = ref [] in
-  
-  (* Phase 1: Quick test - no plugboard *)
-  Printf.printf "Phase 1: Testing rotor positions (no plugboard)...\n";
-  Printf.printf "  Testing 17,576 positions...\n\n";
-  
-  for r1 = 0 to 25 do
-    if r1 mod 5 = 0 then
-      Printf.printf "  Progress: %c** (%d tested)\n" (Char.chr (r1 + 65)) !tested;
-    
-    for r2 = 0 to 25 do
-      for r3 = 0 to 25 do
-        incr tested;
-        let positions = [r1; r2; r3] in
-        let result = encrypt_string rotors positions ring_settings [] known_plain in
-        
-        if result = known_cipher then (
-          matches := (positions, []) :: !matches;
-          Printf.printf "  ✓ MATCH: %c%c%c (no plugboard)\n"
-            (Char.chr (r1 + 65)) (Char.chr (r2 + 65)) (Char.chr (r3 + 65))
-        )
-      done
-    done
-  done;
-  
-  (* Phase 2: Smart plugboard test - only test likely swaps *)
-  if List.length !matches = 0 then (
-    Printf.printf "\nPhase 2: Testing with smart plugboard inference...\n";
-    let likely_plugs = infer_plugboard constraints in
-    
-    (* Only test the specific plugboard from config.ml *)
-    let test_plugboards = [
-      [('A', 'Z')];
-      [('B', 'D')];
-      [('A', 'Z'); ('B', 'D')];
-    ] in
-    
-    Printf.printf "  Testing %d likely plugboard configurations...\n\n" (List.length test_plugboards);
-    
-    List.iter (fun plugboard ->
-      for r1 = 0 to 25 do
-        for r2 = 0 to 25 do
-          for r3 = 0 to 25 do
-            incr tested;
-            let positions = [r1; r2; r3] in
-            let result = encrypt_string rotors positions ring_settings plugboard known_plain in
-            
-            if result = known_cipher then (
-              matches := (positions, plugboard) :: !matches;
-              Printf.printf "  ✓ MATCH: %c%c%c with plugboard: "
-                (Char.chr (r1 + 65)) (Char.chr (r2 + 65)) (Char.chr (r3 + 65));
-              List.iter (fun (a, b) -> Printf.printf "%c↔%c " a b) plugboard;
-              Printf.printf "\n"
-            )
-          done
-        done
-      done
-    ) test_plugboards
-  );
-  
-  Printf.printf "\n════════════════════════════════════════════════════════════════\n";
-  Printf.printf "Search complete!\n";
-  Printf.printf "  Configurations tested: %d\n" !tested;
-  Printf.printf "  Matches found: %d\n" (List.length !matches);
-  Printf.printf "════════════════════════════════════════════════════════════════\n\n";
-  
-  List.rev !matches
+(* heuristics *)
 
-(* ============================================
-   DECRYPT FILES
-   ============================================ *)
+(* English letter frequency (in order of frequency) *)
+let english_freq = [|
+  ('E', 12.70); ('T', 9.06); ('A', 8.17); ('O', 7.51); ('I', 6.97);
+  ('N', 6.75); ('S', 6.33); ('H', 6.09); ('R', 5.99); ('D', 4.25);
+  ('L', 4.03); ('C', 2.78); ('U', 2.76); ('M', 2.41); ('W', 2.36);
+  ('F', 2.23); ('G', 2.02); ('Y', 1.97); ('P', 1.93); ('B', 1.29);
+  ('V', 0.98); ('K', 0.77); ('J', 0.15); ('X', 0.15); ('Q', 0.10); ('Z', 0.07)
+|]
 
-let decrypt_files positions plugboard =
-  if not (Sys.file_exists "output") then (
-    Printf.printf "No output/ folder found.\n\n"
-  ) else (
-    let files = Sys.readdir "output" in
-    
-    if Array.length files = 0 then (
-      Printf.printf "No files in output/ to decrypt.\n\n"
-    ) else (
-      Printf.printf "Decrypting %d file(s)...\n\n" (Array.length files);
-      
-      if not (Sys.file_exists "broken") then
-        Sys.mkdir "broken" 0o755;
-      
-      let rotors = [1; 2; 3] in
-      let ring_settings = [0; 0; 0] in
-      
-      Array.iter (fun filename ->
-        let input_path = Filename.concat "output" filename in
-        let output_path = Filename.concat "broken" filename in
-        
-        let ic = open_in input_path in
-        let ciphertext = really_input_string ic (in_channel_length ic) in
-        close_in ic;
-        
-        let plaintext = encrypt_string rotors positions ring_settings plugboard ciphertext in
-        
-        let oc = open_out output_path in
-        output_string oc plaintext;
-        close_out oc;
-        
-        Printf.printf "  ✓ %s\n" filename;
-        Printf.printf "    Preview: %s...\n\n" 
-          (String.sub plaintext 0 (min 50 (String.length plaintext)))
-      ) files;
-      
-      Printf.printf "All files saved to broken/\n\n"
+(* Calculate frequency score for text *)
+let frequency_score text =
+  let counts = Array.make 26 0 in
+  String.iter (fun c ->
+    let upper = Char.uppercase_ascii c in
+    if upper >= 'A' && upper <= 'Z' then
+      counts.(Char.code upper - Char.code 'A') <- counts.(Char.code upper - Char.code 'A') + 1
+  ) text;
+  let total = Array.fold_left (+) 0 counts in
+  if total = 0 then 0.0 else
+  Array.fold_left (fun acc (ch, expected_freq) ->
+    let idx = Char.code ch - Char.code 'A' in
+    let actual_freq = (float_of_int counts.(idx)) /. (float_of_int total) *. 100.0 in
+    acc +. abs_float (actual_freq -. expected_freq)
+  ) 0.0 english_freq
+
+(* Detect contradictions in plugboard assignments *)
+let has_plugboard_contradiction pb =
+  let rec check_pairs seen = function
+    | [] -> false
+    | (a,b)::rest ->
+        (* Check if either letter already appears *)
+        if List.mem a seen || List.mem b seen then true
+        (* Check self-loops *)
+        else if a = b then true
+        else check_pairs (a::b::seen) rest
+  in
+  check_pairs [] pb
+
+(* Index of Coincidence - measures if text resembles natural language *)
+let index_of_coincidence text =
+  let counts = Array.make 26 0 in
+  let letter_count = ref 0 in
+  String.iter (fun c ->
+    let upper = Char.uppercase_ascii c in
+    if upper >= 'A' && upper <= 'Z' then (
+      counts.(Char.code upper - Char.code 'A') <- counts.(Char.code upper - Char.code 'A') + 1;
+      incr letter_count
     )
-  )
+  ) text;
+  let n = float_of_int !letter_count in
+  if n <= 1.0 then 0.0 else
+  Array.fold_left (fun acc count ->
+    let fi = float_of_int count in
+    acc +. (fi *. (fi -. 1.0))
+  ) 0.0 counts /. (n *. (n -. 1.0))
 
-(* ============================================
-   MAIN
-   ============================================ *)
+(* Logic *)
 
+(* Advanced scoring combining multiple heuristics *)
+let score_configuration crib cipher test_output =
+  let match_score = float_of_int (
+    let n = min (String.length test_output) (String.length cipher) in
+    let rec aux i acc = 
+      if i=n then acc 
+      else aux (i+1) (if test_output.[i]=cipher.[i] then acc+1 else acc) 
+    in aux 0 0
+  ) in
+  
+  (* Weight different factors *)
+  let freq_score = 1.0 /. (1.0 +. frequency_score test_output) in
+  let ic_score = index_of_coincidence test_output in
+  let ic_weight = if ic_score > 0.06 then ic_score *. 10.0 else 0.0 in
+  
+  (* Combined score favoring exact matches *)
+  (match_score *. 10.0) +. freq_score +. ic_weight
+
+(* Crib-based early elimination *)
+let is_impossible_by_crib crib cipher positions =
+  (* Check for impossible self-encryption (Enigma property: letter never encrypts to itself) *)
+  let n = min (String.length crib) (String.length cipher) in
+  let rec check i =
+    if i >= n then false
+    else
+      let c_plain = Char.uppercase_ascii crib.[i] in
+      let c_cipher = Char.uppercase_ascii cipher.[i] in
+      if c_plain >= 'A' && c_plain <= 'Z' && c_cipher >= 'A' && c_cipher <= 'Z' then
+        if c_plain = c_cipher then true  (* Impossible! *)
+        else check (i+1)
+      else check (i+1)
+  in
+  check 0
+
+(* Generate plugboards more efficiently with constraints *)
+let generate_plugboards_smart crib cipher =
+  let letters = List.init 26 (fun i -> Char.chr (i + Char.code 'A')) in
+  
+  (* Extract likely plugboard candidates from crib analysis *)
+  let likely_pairs = ref [] in
+  for i = 0 to min (String.length crib) (String.length cipher) - 1 do
+    let c1 = Char.uppercase_ascii crib.[i] in
+    let c2 = Char.uppercase_ascii cipher.[i] in
+    if c1 >= 'A' && c1 <= 'Z' && c2 >= 'A' && c2 <= 'Z' && c1 <> c2 then
+      likely_pairs := (c1, c2) :: !likely_pairs
+  done;
+  
+  let combos = ref [[]] in
+  
+  (* Prioritize likely pairs first *)
+  List.iter (fun (a,b) ->
+    if not (has_plugboard_contradiction [(a,b)]) then
+      combos := [(a,b)] :: !combos
+  ) !likely_pairs;
+  
+  (* Generate 1-pair combinations *)
+  let rec one_pair = function
+    | [] | [_] -> ()
+    | x::xs -> 
+        List.iter (fun y -> 
+          if not (has_plugboard_contradiction [(x,y)]) then
+            combos := [(x,y)]::!combos
+        ) xs; 
+        one_pair xs
+  in
+  one_pair letters;
+  
+  (* Generate 2-pair combinations with early termination *)
+  let max_two_pairs = 100 in  (* Limit search space *)
+  let counter = ref 0 in
+  let rec two_pair = function
+    | [] | [_] | [_;_] | [_;_;_] -> ()
+    | a::rest when !counter < max_two_pairs ->
+        List.iter (fun b ->
+          if !counter < max_two_pairs then
+            let remaining = List.filter (fun c -> c<>a && c<>b) rest in
+            let rec choose_cd = function
+              | [] | [_] -> ()
+              | c::rest3 when !counter < max_two_pairs ->
+                  List.iter (fun d -> 
+                    if not (has_plugboard_contradiction [(a,b);(c,d)]) then (
+                      combos := [(a,b);(c,d)]::!combos;
+                      incr counter
+                    )
+                  ) rest3;
+                  choose_cd rest3
+              | _ -> ()
+            in
+            choose_cd remaining
+        ) rest;
+        two_pair rest
+    | _ -> ()
+  in
+  two_pair letters;
+  !combos
+
+(* Try plugboards with early termination *)
+let try_plugboards_fast cfg crib cipher positions =
+  let plugboards = generate_plugboards_smart crib cipher in
+  let best_match = ref None in
+  let best_score = ref 0.0 in
+  
+  List.iter (fun pb ->
+    match !best_match with
+    | Some _ when !best_score >= float_of_int (String.length crib) -> ()  (* Exact match found *)
+    | _ ->
+        let cfg_test = { cfg with positions; plugboard=pb } in
+        let test_output = encrypt_string cfg_test crib in
+        let score = score_configuration crib cipher test_output in
+        
+        if test_output = cipher then (
+          best_match := Some (pb, cfg_test);
+          best_score := infinity
+        ) else if score > !best_score then (
+          best_score := score;
+          if score > float_of_int (String.length crib) *. 0.8 then
+            best_match := Some (pb, cfg_test)
+        )
+  ) plugboards;
+  !best_match
+
+(* Improved rotor search with early pruning *)
+let find_top_rotors_smart crib cipher k =
+  (* Handle edge cases *)
+  if String.length crib = 0 || String.length cipher = 0 then [] else
+  
+  let scored = ref [] in
+  let pruned = ref 0 in
+  
+  for a=0 to 25 do 
+    for b=0 to 25 do 
+      for c=0 to 25 do
+        let pos = [a;b;c] in
+        
+        (* Early elimination: check for impossible configurations *)
+        if not (is_impossible_by_crib crib cipher pos) then (
+          let cfg_test = { base_cfg with positions=pos; plugboard=[] } in
+          let test_output = encrypt_string cfg_test crib in
+          let sc = score_configuration crib cipher test_output in
+          scored := (sc,pos)::!scored
+        ) else
+          incr pruned
+      done 
+    done 
+  done;
+  
+  Printf.printf "Pruned %d impossible configurations\n" !pruned;
+  
+  (* Sort by score and take top k *)
+  !scored 
+  |> List.sort (fun (s1,_)(s2,_) -> compare s2 s1) 
+  |> fun l -> 
+      let rec take n acc = function
+        | [] -> List.rev acc
+        | x::xs when n > 0 -> take (n-1) (x::acc) xs
+        | _ -> List.rev acc
+      in take k [] l
+
+(* main code *)
 let () =
-  let argc = Array.length Sys.argv in
-  
-  if argc < 3 then (
-    Printf.printf "\n";
-    Printf.printf "╔════════════════════════════════════════════════════════════════╗\n";
-    Printf.printf "║         SMART ENIGMA BREAKER - USAGE                          ║\n";
-    Printf.printf "╚════════════════════════════════════════════════════════════════╝\n\n";
-    Printf.printf "Usage:\n";
-    Printf.printf "  ocaml breaker.ml <plaintext> <ciphertext>\n\n";
-    Printf.printf "Example:\n";
-    Printf.printf "  ocaml breaker.ml HEILHITLER IIOKLPSMAE\n\n";
-    Printf.printf "This breaker uses Turing's smart approach:\n";
-    Printf.printf "  ✓ Fast rotor position search\n";
-    Printf.printf "  ✓ Intelligent plugboard inference\n";
-    Printf.printf "  ✓ Early elimination of impossible configs\n";
-    Printf.printf "  ✓ Completes in ~30 seconds instead of hours\n\n";
-    exit 1
-  );
-  
-  let known_plain = String.uppercase_ascii Sys.argv.(1) in
-  let known_cipher = String.uppercase_ascii Sys.argv.(2) in
-  
-  match break_enigma_smart known_plain known_cipher with
-  | [] ->
-      Printf.printf "❌ No settings found.\n";
-      Printf.printf "\nTry a longer crib (8+ characters) for better results.\n\n"
-  | matches ->
-      Printf.printf "╔════════════════════════════════════════════════════════════════╗\n";
-      Printf.printf "║           ✅ FOUND %d CONFIGURATION(S) ✅                     ║\n" (List.length matches);
-      Printf.printf "╚════════════════════════════════════════════════════════════════╝\n\n";
+  match mode with
+  | "encrypt" -> 
+      let output = encrypt_string base_cfg text in
+      Printf.printf "Mode: Encrypt\nInput: %s\nOutput: %s\n" text output
       
-      List.iteri (fun idx (positions, plugboard) ->
-        Printf.printf "Configuration #%d:\n" (idx + 1);
-        Printf.printf "  Rotor Positions: %c%c%c (%d, %d, %d)\n"
-          (Char.chr (List.nth positions 0 + 65))
-          (Char.chr (List.nth positions 1 + 65))
-          (Char.chr (List.nth positions 2 + 65))
-          (List.nth positions 0)
-          (List.nth positions 1)
-          (List.nth positions 2);
-        Printf.printf "  Plugboard: ";
-        if plugboard = [] then
-          Printf.printf "None\n"
-        else (
-          List.iter (fun (a, b) -> Printf.printf "%c↔%c " a b) plugboard;
-          Printf.printf "\n"
-        );
-        Printf.printf "\n"
-      ) matches;
+  | "decrypt" -> 
+      let output = decrypt_string base_cfg text in
+      Printf.printf "Mode: Decrypt\nInput: %s\nOutput: %s\n" text output
       
-      let (positions, plugboard) = List.hd matches in
-      Printf.printf "════════════════════════════════════════════════════════════════\n";
-      Printf.printf "Using Configuration #1 to decrypt files...\n";
-      Printf.printf "════════════════════════════════════════════════════════════════\n\n";
+  | "break" ->
+      Printf.printf "Mode: Break (Bombe-style)\nCrib: %s\nCipher: %s\n\n" break_crib break_cipher;
       
-      decrypt_files positions plugboard;
-      Printf.printf "════════════════════════════════════════════════════════════════\n";
-      Printf.printf "✅ Success! Settings discovered and files decrypted.\n";
-      Printf.printf "════════════════════════════════════════════════════════════════\n\n"
+      (* Handle empty string edge case *)
+      if String.length break_crib = 0 || String.length break_cipher = 0 then
+        Printf.printf "Error: Crib and cipher must be non-empty\n"
+      else (
+        Printf.printf "Analyzing with cryptanalytic heuristics...\n";
+        
+        (* Stage 1: Smart rotor search with pruning *)
+        let top_rotors = find_top_rotors_smart break_crib break_cipher 5 in
+        Printf.printf "\nTop %d rotor position candidates:\n" (List.length top_rotors);
+        List.iter (fun (score,pos) ->
+          Printf.printf "  Score: %.2f, Position: %s\n" 
+            score
+            (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos))
+        ) top_rotors;
+        
+        (* Stage 2: Plugboard search with intelligent pruning *)
+        Printf.printf "\nSearching plugboard configurations...\n";
+        let rec search = function
+          | [] -> Printf.printf "\nNo exact match found (configuration may be outside search space)\n"
+          | (score,pos)::tl ->
+              Printf.printf "Testing position %s...\n" 
+                (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos));
+              match try_plugboards_fast base_cfg break_crib break_cipher pos with
+              | None -> search tl
+              | Some (pb,cfg_found) ->
+                  Printf.printf "\n✓ Configuration Found!\n";
+                  Printf.printf "Rotor positions: %s\n" 
+                    (String.concat "" (List.map (fun x -> String.make 1 (Char.chr (x+65))) pos));
+                  Printf.printf "Plugboard pairs: %s\n" 
+                    (if pb = [] then "None" 
+                     else String.concat ", " (List.map (fun (a,b) -> Printf.sprintf "%c↔%c" a b) pb));
+                  Printf.printf "Decrypted text: %s\n" (decrypt_string cfg_found break_cipher)
+        in 
+        search top_rotors
+      )
+      
+  | _ -> failwith "Invalid mode: must be 'encrypt', 'decrypt', or 'break'"
