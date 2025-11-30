@@ -2,7 +2,7 @@
 assignment: Assignment 1
 student: Pooja Sridhar
 date: 26 September 2025
-collaborators: None
+collaborators: Use of AI for formatting
 problem: Problem 4: Stalin Sort
 header>>
 
@@ -51,19 +51,16 @@ operational steps>>
 
 <<ocaml code
 let stalin_sort (lst : 'a list) : 'a list =
-  match lst with
-  | [] -> []
-  | head :: tail ->
-    let rec aux acc rest =
-      match rest with
-      | [] -> List.rev acc
-      | h :: t ->
-          if h >= List.hd acc then
-            aux (h :: acc) t
-          else
-            aux acc t
-    in
-    aux [head] tail
+match lst with
+| [] -> []
+| hd :: tl ->
+let rec aux (last : 'a) (acc : 'a list) = function
+| [] -> List.rev acc
+| x :: xs ->
+if x >= last then aux x (x :: acc) xs
+else aux last acc xs
+in
+aux hd [hd] tl
 ocaml code>>
 
 
@@ -72,47 +69,21 @@ ocaml code>>
 <<proof
 
     <<invariant
-        Initialisation: 
-        For lists of length 0 and 1, the algorithm produces correct output.
-        
-        Length n = 0 (lst = []):
-        - Input satisfies requires: [] is a valid list
-        - Algorithm returns: []
-        - Output satisfies ensures [] is: 
-          - (i) a subsequence of []
-          - (ii) trivially non-decreasing
-          - (iii) maximal (cannot add more elements)
-        
-        Length n = 1 (lst = [x]):
-        - Input satisfies requires: [x] is a valid list
-        - Algorithm returns: [x]
-        - Output satisfies ensures [x] is : 
-          - (i) a subsequence of [x]
-          - (ii) trivially non-decreasing
-          - (iii) maximal (cannot add more elements)
+        Initialization:
+        For empty list: trivially satisfied.
+        For single-element list [x]: accumulator = [x], which is non-decreasing and maximal for one element.
         
         Maintenance:
-        For a list lst = hd :: tl of length n+1 where n ≥ 1, assuming the 
-        tail tl produces a correct result rest, the algorithm maintains 
-        correctness by comparing hd with first(rest).
+        Suppose acc is correct for the first k elements.
+        Let x be the next element:
+        If x >= last, append to acc. Non-decreasing property preserved, and maximality maintained.
+        If x < last, skip x. Still a valid subsequence, and including x would break non-decreasing property.
         
-        If rest = [] or hd ≤ first(rest):
-        Algorithm returns hd :: rest, which satisfies ensures because:
-        - (i) hd :: rest is a subsequence of hd :: tl
-        - (ii) hd :: rest is non-decreasing
-        - (iii) hd :: rest is maximal
-        
-        If hd > first(rest):
-        Algorithm returns rest, which satisfies ensures because:
-        - (i) rest is a subsequence of hd :: tl
-        - (ii) rest is non-decreasing
-        - (iii) rest is maximal (cannot include hd without violating 
-          non-decreasing property)
-        
-        Termination: 
-        The algorithm terminates because each recursive call is made on the 
-        tail of the list, which is strictly smaller in structure, until the 
-        base case is reached and the recursion is stopped.
+        Termination:
+        The algorithm terminates because each recursive call is made on the tail of the list, which is strictly smaller in                 structure, until the  base case is reached and the recursion is stopped
+        Each recursive call processes one element of the list.
+        Base case reached when list is empty. Recursion terminates.
+
     invariant>>
 
 
@@ -135,20 +106,15 @@ ocaml code>>
           - (ii) trivially non-decreasing
           - (iii) maximal (cannot add more elements)
 
-        inductive hypothesis:
-        For all lists of length k where 0 ≤ k < n, if the input satisfies 
-        the requires clause, then stalin_sort produces a list that satisfies 
-        the ensures clause.
+        inductive hypothesis: Assume stalin_sort correctly returns the first maximal non-decreasing subsequence for all lists of                 length ≤ n.
 
         inductive step:
-        For a list lst = hd :: tl of length n+1 where n ≥ 1.
-        
-        The tail tl has length n, so by the inductive hypothesis, stalin_sort 
-        tl produces a list rest that:
-        - is a subsequence of tl (preserves order)
-        - is non-decreasing
-        - is maximal for tl
-        
+                Let lst = hd :: tl, length = n+1.
+                By IH, stalin_sort tl produces a correct subsequence rest that is non-decreasing and maximal.
+                Let last = last element in acc:
+                If hd >= last, prepend hd to accumulator → output remains non-decreasing, subsequence of original, maximal.
+                If hd < last, skip hd → output still satisfies ensures (subsequence, non-decreasing, maximal).
+                        
         The algorithm compares hd with the first element of rest:
         
         If rest = [] or hd ≤ first(rest), 
