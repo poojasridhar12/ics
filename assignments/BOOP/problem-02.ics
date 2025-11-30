@@ -23,6 +23,8 @@ blueprint>>
 
 
 <<operational steps
+
+naive ?
 - Base Case [Empty list] - If empty, return empty
 - Base Case [Single Element] - If 1 element, return the same list
 - Recursive Case 
@@ -30,6 +32,7 @@ blueprint>>
   - Append the head to the end of the reversed tail accumulatively 
   - Return the results 
 
+efficient ?
 - Using tail recursion in this case (because recursive call is the last operation)
 - Example used for me to understand:
     - reverse_helper [1; 2; 3] []
@@ -37,6 +40,8 @@ blueprint>>
     - reverse_helper [3] [2; 1] (prepend 2 to )​
     - reverse_helper [] [3; 2; 1] (prepend 3 to [2; 1])
     - Return [3; 2; 1] (base case reached)
+
+should combine??
 operational steps>>
 
 
